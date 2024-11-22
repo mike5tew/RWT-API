@@ -41,6 +41,7 @@ type EventDetails struct {
 	EventID      int             `json:"EventID"`
 	Location     string          `json:"Location"`
 	EventDate    string          `json:"EventDate"`
+	DateString   string          `json:"DateString"`
 	StartTime    string          `json:"StartTime"`
 	EndTime      string          `json:"EndTime"`
 	Invitation   string          `json:"Invitation"`
@@ -94,11 +95,28 @@ type ArchiveEntry struct {
 	Clips        []Clip        `json:"Clips"`
 }
 
+// messageID	int Auto Increment
+// messageDate	timestamp NULL
+// messageFrom	varchar(60) NULL
+// messageContent	varchar(500) NULL ['']
+// eventName	varchar(100) ['']
+// eventDate	timestamp
+// eventTime	varchar(25) ['']
+// contactEmail	varchar(100) NULL
+// contactPhone	varchar(20) ['']
+// eventLocation
+
 type Message struct {
 	MessageID      int    `json:"MessageID"`
 	MessageDate    string `json:"MessageDate"`
 	MessageFrom    string `json:"MessageFrom"`
 	MessageContent string `json:"MessageContent"`
+	EventName      string `json:"EventName"`
+	EventDate      string `json:"EventDate"`
+	EventTime      string `json:"EventTime"`
+	ContactEmail   string `json:"ContactEmail"`
+	ContactPhone   string `json:"ContactPhone"`
+	EventLocation  string `json:"EventLocation"`
 }
 
 type User struct {
@@ -135,15 +153,15 @@ type SiteInfo struct {
 }
 
 type MusicTrack struct {
-	ID        int    `json:"ID"`
-	TrackName string `json:"TrackName"`
-	Lyrics    string `json:"Lyrics"`
-	Artist    string `json:"Artist"`
-	Soprano   string `json:"Soprano"`
-	Alto      string `json:"Alto"`
-	Tenor     string `json:"Tenor"`
-	AllParts  string `json:"AllParts"`
-	Piano     string `json:"Piano"`
+	MusicTrackID int    `json:"MusicTrackID"`
+	TrackName    string `json:"TrackName"`
+	Lyrics       string `json:"Lyrics"`
+	Artist       string `json:"Artist"`
+	Soprano      string `json:"Soprano"`
+	Alto         string `json:"Alto"`
+	Tenor        string `json:"Tenor"`
+	AllParts     string `json:"AllParts"`
+	Piano        string `json:"Piano"`
 }
 
 //	export interface ScreenSize {

@@ -2,6 +2,8 @@ package events
 
 import (
 	// import the mysql driver
+
+	strt "RWTAPI/structures"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -9,13 +11,13 @@ import (
 	"log"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
-	strt "packages/structures"
 	"strconv"
 	"strings"
 	"time"
 
-	sqldb "packages/sqldb"
+	sqldb "RWTAPI/sqldb"
 
 	"github.com/gorilla/mux"
 	"golang.org/x/exp/rand"
@@ -34,7 +36,7 @@ func FileDetailsPOST(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	sqldb.Init()
+
 	//get the json data from the request
 	var uploadDetails strt.ImageDetail
 	err := json.NewDecoder(r.Body).Decode(&uploadDetails)
@@ -160,7 +162,7 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 	uploadDetails.Width = Width
 	uploadDetails.Height = Height
 	// insert the data into the database
-	sqldb.Init()
+
 	sSQL := "INSERT INTO images (filename, eventID, caption, width, height) VALUES (?, ?, ?, ?, ?)"
 	_, err = sqldb.DB.Exec(sSQL, uploadDetails.Filename, uploadDetails.EventID, uploadDetails.Caption, uploadDetails.Width, uploadDetails.Height)
 	if err != nil {
@@ -218,13 +220,12 @@ func ArchiveGET(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]
 
-	sqldb.Init()
 	var archive strt.ArchiveEntry
 	var event strt.EventDetails
 	sSQL := "SELECT archive.archiveID, choirevents.location, choirevents.eventDate, choirevents.title, archive.report FROM choirevents JOIN archive ON archive.eventID=choirevents.eventID WHERE choirevents.eventID = ?"
 	rows, err := sqldb.DB.Query(sSQL, id)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error:", err)
 		archive.ArchiveID = -1
 		archive.Report = err.Error()
 		json.NewEncoder(w).Encode(archive)
@@ -235,13 +236,13 @@ func ArchiveGET(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		err = rows.Scan(&archive.ArchiveID, &event.Location, &SQLDate, &event.Title, &archive.Report)
 		if err != nil {
-			log.Fatal(err)
+			log.Println("Error:", err)
 			archive.ArchiveID = -1
 			archive.Report = err.Error()
 			json.NewEncoder(w).Encode(archive)
 			return
 		}
-		//fmt.Println("ArchiveGET:: " + event.Location + " " + event.EventDate + " " + event.Title + " " + archive.Report)
+
 		eventID, err := strconv.Atoi(id)
 		if err != nil {
 			archive.ArchiveID = -1
@@ -267,7 +268,7 @@ func ArchiveGET(w http.ResponseWriter, r *http.Request) {
 	sSQL = "SELECT * FROM images WHERE eventID = ?"
 	rows, err = sqldb.DB.Query(sSQL, archive.EventDetails.EventID)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error:", err)
 		archive.ArchiveID = -1
 		archive.Report = err.Error()
 		json.NewEncoder(w).Encode(archive)
@@ -278,7 +279,7 @@ func ArchiveGET(w http.ResponseWriter, r *http.Request) {
 		var image strt.ImageDetail
 		err = rows.Scan(&image.ImageID, &image.Filename, &image.Caption, &image.EventID, &image.Height, &image.Width)
 		if err != nil {
-			log.Fatal(err)
+			log.Println("Error:", err)
 			archive.ArchiveID = -1
 			archive.Report = err.Error()
 			json.NewEncoder(w).Encode(archive)
@@ -290,7 +291,7 @@ func ArchiveGET(w http.ResponseWriter, r *http.Request) {
 	sSQL = "SELECT * FROM clips WHERE eventID = ?"
 	rows, err = sqldb.DB.Query(sSQL, archive.EventDetails.EventID)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error:", err)
 		archive.ArchiveID = -1
 		archive.Report = err.Error()
 		json.NewEncoder(w).Encode(archive)
@@ -301,7 +302,7 @@ func ArchiveGET(w http.ResponseWriter, r *http.Request) {
 		var clip strt.Clip
 		err = rows.Scan(&clip.ClipID, &clip.ClipURL, &clip.EventID, &clip.Caption)
 		if err != nil {
-			log.Fatal(err)
+			log.Println("Error:", err)
 			archive.ArchiveID = -1
 			archive.Report = err.Error()
 			json.NewEncoder(w).Encode(archive)
@@ -319,127 +320,153 @@ func ArchivesGET(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	// the url to rerach this endpoint is /ArchivesGET/{records} or http://localhost:8080/ArchivesGET/5
-	// this syntax is not returned by the swagger documentation
-	// get the number of records required
-	sqldb.Init()
-	// split the url into an array iusing the / as the delimiter
-	// the last element of the array is the number of records required
-	// the array is zero based so the last element is len(array) - 1
-	urlArray := strings.Split(r.URL.Path, "/")
-	records := urlArray[len(urlArray)-1]
+	// Initialize the database connection
 
-	fmt.Println("ArchivesGET " + records)
-	// the records are passed as a string so we need to convert them to an integer
-	iRecords, err := strconv.Atoi(records)
+	// Get the screen size and number of images to return
+
+	screen := r.URL.Query().Get("screen")
+	imagesStr := r.URL.Query().Get("archives")
+	iRecords, err := strconv.Atoi(imagesStr)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Invalid archives parameter", http.StatusBadRequest)
 		return
 	}
 
-	// create a slice of archive entries
+	// Determine if the device is desktop or mobile
+	filepath := "images/desktop"
+	if screen == "mobile" {
+		filepath = "images/mobile"
+	} else {
+		filepath = "images/desktop"
+	}
+
+	// Create slices to hold the data
 	var archives []strt.ArchiveEntry
-	// create a slice of eventIDs
-	var events []int
-	// create a slice of image details
+	var events string
 	var images []strt.ImageDetail
-	// create a slice of clips
 	var clips []strt.Clip
-	// create a slice of event details
-	var eventDetails []strt.EventDetails
+	var errorArch strt.ArchiveEntry
+	var errorArray []strt.ArchiveEntry
 	// Gather the archive details from the database
 	sSQLDate := ""
-	sSQL := "SELECT archive.archiveID, choirevents.location, choirevents.eventDate, choirevents.title, archive.report, archive.eventID FROM choirevents JOIN archive ON archive.eventID=choirevents.eventID ORDER BY choirevents.eventDate LIMIT ?"
+	sSQL := "SELECT archive.archiveID, choirevents.location, choirevents.eventDate, choirevents.title, archive.report, archive.eventID FROM choirevents JOIN archive ON archive.eventID = choirevents.eventID WHERE choirevents.eventDate < CURDATE() ORDER BY choirevents.eventDate DESC LIMIT ?"
 	rows, err := sqldb.DB.Query(sSQL, iRecords)
-	fmt.Println("ArchivesGET:: " + sSQL + " " + records)
 	if err != nil {
-		log.Fatal(err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		log.Println("Error querying database:", err)
+		errorArch.ArchiveID = -1
+		errorArch.Report = err.Error()
+		errorArray = append(errorArray, errorArch)
+		//return the error array
+		json.NewEncoder(w).Encode(errorArray)
 	}
 	defer rows.Close()
+
 	for rows.Next() {
 		var archive strt.ArchiveEntry
-		var eventDetail strt.EventDetails
-		err = rows.Scan(&archive.ArchiveID, &eventDetail.Location, &sSQLDate, &eventDetail.Title, &archive.Report, &eventDetail.EventID)
-		// convert and format the date
+		err = rows.Scan(&archive.ArchiveID, &archive.EventDetails.Location, &sSQLDate, &archive.EventDetails.Title, &archive.Report, &archive.EventDetails.EventID)
 		if err != nil {
-			log.Fatal(err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+			log.Println("Error scanning row:", err)
+			errorArch.ArchiveID = -1
+			errorArch.Report = err.Error()
+			errorArray = append(errorArray, errorArch)
+			//return the error array
+			json.NewEncoder(w).Encode(errorArray)
 		}
 		parsedDate, err := ParseMySQLDateTime(sSQLDate)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+			log.Println("Error parsing date:", err)
+			errorArch.ArchiveID = -1
+			errorArch.Report = err.Error()
+			errorArray = append(errorArray, errorArch)
+			//return the error array
+			json.NewEncoder(w).Encode(errorArray)
 		}
+		// convert the data from ssqldate
 
+		archive.EventDetails.EventDate = parsedDate.Format("2006-01-02")
 		archives = append(archives, archive)
-		eventDetail.EventDate = parsedDate.Format("2006-01-02")
-		events = append(events, archive.EventDetails.EventID)
-		eventDetails = append(eventDetails, eventDetail)
+		events = events + strconv.Itoa(archive.EventDetails.EventID) + ","
 	}
-	// get the images from all of the events
-	sSQL = "SELECT * FROM images WHERE eventID = ?"
-	for _, event := range events {
-		rows, err = sqldb.DB.Query(sSQL, event)
+	// Remove the trailing comma
+	events = events[:len(events)-1]
+	events = "(" + events + ")"
+	if events == "()" {
+		json.NewEncoder(w).Encode(archives)
+		return
+	}
+	// Get the images from all of the events
+	sSQL = "SELECT * FROM images WHERE eventID IN " + events
+	fmt.Println(sSQL)
+	rows, err = sqldb.DB.Query(sSQL)
+	if err != nil {
+		log.Println("Error querying images:", err)
+		errorArch.ArchiveID = -1
+		errorArch.Report = err.Error()
+		errorArray = append(errorArray, errorArch)
+		//return the error array
+		json.NewEncoder(w).Encode(errorArray)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var image strt.ImageDetail
+		err = rows.Scan(&image.ImageID, &image.Filename, &image.Caption, &image.EventID, &image.Height, &image.Width)
 		if err != nil {
-			log.Fatal(err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+			log.Println("Error scanning image row:", err)
+			errorArch.ArchiveID = -1
+			errorArch.Report = err.Error()
+			errorArray = append(errorArray, errorArch)
+			//return the error array
+			json.NewEncoder(w).Encode(errorArray)
 		}
-		defer rows.Close()
-		for rows.Next() {
-			var image strt.ImageDetail
-			err = rows.Scan(&image.ImageID, &image.Filename, &image.Caption, &image.EventID, &image.Height, &image.Width)
-			if err != nil {
-				log.Fatal(err)
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			images = append(images, image)
+		// Adjust filename for mobile
+		if filepath == "images/mobile" {
+			image.Filename = strings.Replace(image.Filename, "dt", "mb", 1)
 		}
+		image.Filename = filepath + "/" + url.PathEscape(image.Filename)
+		fmt.Println(image.Filename)
+		images = append(images, image)
 	}
-	// get the clips from all of the events
+
+	// Get the clips from all of the events
 	sSQL = "SELECT * FROM clips WHERE eventID = ?"
-	for _, event := range events {
-		rows, err = sqldb.DB.Query(sSQL, event)
-		if err != nil {
-			log.Fatal(err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var clip strt.Clip
-			err = rows.Scan(&clip.ClipID, &clip.ClipURL, &clip.EventID, &clip.Caption)
-			if err != nil {
-				log.Fatal(err)
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			clips = append(clips, clip)
-		}
+	rows, err = sqldb.DB.Query(sSQL, events)
+	if err != nil {
+		log.Println("Error querying clips:", err)
+		errorArch.ArchiveID = -1
+		errorArch.Report = err.Error()
+		errorArray = append(errorArray, errorArch)
+		//return the error array
+		json.NewEncoder(w).Encode(errorArray)
 	}
-	// combine the data into the archive entries
-	for i, archive := range archives {
-		for _, eventDetail := range eventDetails {
-			if archive.EventDetails.EventID == eventDetail.EventID {
-				archives[i].EventDetails = eventDetail
-			}
+	defer rows.Close()
+	for rows.Next() {
+		var clip strt.Clip
+		err = rows.Scan(&clip.ClipID, &clip.ClipURL, &clip.EventID, &clip.Caption)
+		if err != nil {
+			log.Println("Error scanning clip row:", err)
+			errorArch.ArchiveID = -1
+			errorArch.Report = err.Error()
+			errorArray = append(errorArray, errorArch)
+			//return the error array
+			json.NewEncoder(w).Encode(errorArray)
 		}
+		clips = append(clips, clip)
+	}
+
+	// Combine the data into the archive entries
+	for i, archive := range archives {
 		for _, image := range images {
-			if archive.EventDetails.EventID == image.EventID {
+			if image.EventID == archive.EventDetails.EventID {
 				archives[i].Images = append(archives[i].Images, image)
 			}
 		}
 		for _, clip := range clips {
-			if archive.EventDetails.EventID == clip.EventID {
+			if clip.EventID == archive.EventDetails.EventID {
 				archives[i].Clips = append(archives[i].Clips, clip)
 			}
 		}
 	}
-	// return the data
+	// Return the data
 	json.NewEncoder(w).Encode(archives)
 }
 
@@ -449,11 +476,10 @@ func ArchiveEntryDELETE(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]
 
-	sqldb.Init()
 	sSQL := "DELETE FROM archive WHERE archiveID = ?"
 	_, err := sqldb.DB.Exec(sSQL, id)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -464,7 +490,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	// w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	var user strt.User
-	sqldb.Init()
+
 	fmt.Println("Login")
 	err := json.NewDecoder(r.Body).Decode(&user)
 	if err != nil {
@@ -474,7 +500,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	sSQL := "SELECT * FROM users WHERE user = ? AND password = ?"
 	rows, err := sqldb.DB.Query(sSQL, user.Username, user.Password)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -482,7 +508,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		err = rows.Scan(&user.UserID, &user.Username, &user.Password, &user.Role)
 		if err != nil {
-			log.Fatal(err)
+			log.Println("Error:", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -498,12 +524,12 @@ func MessagesGET(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	sqldb.Init()
+
 	var messages []strt.Message
 	sSQL := "SELECT * FROM messages"
 	rows, err := sqldb.DB.Query(sSQL)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -512,7 +538,7 @@ func MessagesGET(w http.ResponseWriter, r *http.Request) {
 		var message strt.Message
 		err = rows.Scan(&message.MessageID, &message.MessageContent)
 		if err != nil {
-			log.Fatal(err)
+			log.Println("Error:", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -525,19 +551,35 @@ func MessagePOST(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	var message strt.Message
-	sqldb.Init()
+	//fmt.Println("MessagePOST")
+	//fmt.Println(r.Body)
+
 	err := json.NewDecoder(r.Body).Decode(&message)
 	if err != nil {
+		fmt.Println(err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	sSQL := "INSERT INTO messages (messageContent) VALUES (?)"
-	_, err = sqldb.DB.Exec(sSQL, message.MessageContent)
+	// 	messageID	int Auto Increment
+	// messageDate	timestamp NULL
+	// messageFrom	varchar(60) NULL
+	// messageContent	varchar(500) NULL ['']
+	// eventName	varchar(100) ['']
+	// eventDate	timestamp
+	// eventTime	varchar(25) ['']
+	// contactEmail	varchar(100) NULL
+	// contactPhone	varchar(20) ['']
+	// eventLocation
+	sSQL := "INSERT INTO messages (messageDate, messageContent, messageFrom, eventName, eventDate, eventTime, contactEmail, contactPhone, eventLocation) VALUES (NOW(), ?, ?, ?, ?, ?, ?, ?, ?)"
+	_, err = sqldb.DB.Exec(sSQL, message.MessageContent, message.MessageFrom, message.EventName, message.EventDate, message.EventTime, message.ContactEmail, message.ContactPhone, message.EventLocation)
 	if err != nil {
+		fmt.Println(err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	message.MessageContent = "message sent"
+	// return a json response
+	json.NewEncoder(w).Encode(message)
 }
 
 func MessageDELETE(w http.ResponseWriter, r *http.Request) {
@@ -545,7 +587,7 @@ func MessageDELETE(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	w.Header().Set("Access-Control-Allow-Methods", "DELETE")
-	sqldb.Init()
+
 	fmt.Println("MessageDELETE")
 	vars := mux.Vars(r)
 	id := vars["id"]
@@ -553,7 +595,7 @@ func MessageDELETE(w http.ResponseWriter, r *http.Request) {
 	sSQL := "DELETE FROM messages WHERE messageID = ?"
 	_, err := sqldb.DB.Exec(sSQL, id)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -564,7 +606,7 @@ func MessagePUT(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	var message strt.Message
-	sqldb.Init()
+
 	err := json.NewDecoder(r.Body).Decode(&message)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -582,93 +624,125 @@ func MessagePUT(w http.ResponseWriter, r *http.Request) {
 func UpcomingEventsListsGET(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
-	sqldb.Init()
+
 	var events []strt.EventDetails
 	var event strt.EventDetails
 	sSQL := "SELECT * FROM choirevents WHERE eventDate >= curdate() ORDER BY eventDate"
 	rows, err := sqldb.DB.Query(sSQL)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
-	sSQLDate := ""
 	// Modify	eventID	location	eventDate	startTime	endTime	price	title	meetingPoint	invitation
 	for rows.Next() {
-		err = rows.Scan(&event.EventID, &event.Location, &sSQLDate, &event.StartTime, &event.EndTime, &event.Price, &event.Title, &event.MeetingPoint, &event.Invitation)
+		err = rows.Scan(&event.EventID, &event.Location, &event.EventDate, &event.StartTime, &event.EndTime, &event.Price, &event.Title, &event.MeetingPoint, &event.Invitation)
 		if err != nil {
-			log.Fatal(err)
+			log.Println("Error:", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		// convert and format the date
-		parsedDate, err := ParseMySQLDateTime(sSQLDate)
+		parsedDate, err := ParseMySQLDateTime(event.EventDate)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		event.EventDate = parsedDate.Format("2006-01-02")
+		// format the date into a javascript date object
+		event.DateString = parsedDate.Format("2006-01-02")
 		events = append(events, event)
 	}
-
 	json.NewEncoder(w).Encode(events)
 }
 
+// GET upcoming playlists
 func UpcomingPlaylistsGET(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	sqldb.Init()
+
+	// Initialize the database connection
+
 	var events []strt.EventDetails
-	var playlists []strt.PlaylistEntry
-	var musicTracks []strt.MusicTrack
-	var event strt.EventDetails
-	var playlist strt.PlaylistEntry
-	var musicTrack strt.MusicTrack
-	sSQL := "SELECT choirevents.eventID, choirevents.location, choirevents.eventDate, choirevents.startTime, choirevents.endTime, choirevents.title, choirevents.meetingPoint, playlists.playlistID playlists.playorder, music.musicTrackID, music.trackName, music.lyrics, music.soprano, music.alto, music.tenor, music.allParts FROM choirevents LEFT OUTER JOIN (playlists JOIN music on playlists.musicID=music.musicTrackID) on choirevents.eventID=playlists.eventID WHERE choirevents.eventDate >= curdate() ORDER BY choirevents.eventDate, playlists.playorder"
+
+	sSQL := `SELECT * FROM choirevents WHERE eventDate >= CURDATE() ORDER BY eventDate`
+
 	rows, err := sqldb.DB.Query(sSQL)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error querying database:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	sSQLDate := ""
 	defer rows.Close()
-	for rows.Next() {
-		err = rows.Scan(&event.EventID, &event.Location, &sSQLDate, &event.StartTime, &event.EndTime, &event.Title, &event.MeetingPoint, &playlist.PlaylistID, &playlist.Playorder, &musicTrack.ID, &musicTrack.TrackName, &musicTrack.Lyrics, &musicTrack.Soprano, &musicTrack.Alto, &musicTrack.Tenor, &musicTrack.AllParts)
-		if err != nil {
-			log.Fatal(err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		// convert and format the date
-		parsedDate, err := ParseMySQLDateTime(sSQLDate)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		event.EventDate = parsedDate.Format("2006-01-02")
-		_ = append(events, event)
-		_ = append(playlists, playlist)
-		_ = append(musicTracks, musicTrack)
-	}
-	json.NewEncoder(w).Encode(events)
-}
 
+	for rows.Next() {
+		var event strt.EventDetails
+		err = rows.Scan(&event.EventID, &event.Location, &event.EventDate, &event.StartTime, &event.EndTime, &event.Price, &event.Title, &event.MeetingPoint, &event.Invitation)
+		if err != nil {
+			log.Println("Error scanning row:", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// Convert the date to a formatted string
+		parsedDate, err := ParseMySQLDateTime(event.EventDate)
+		if err != nil {
+			log.Println("Error parsing date:", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		event.DateString = parsedDate.Format("2006-01-02")
+		events = append(events, event)
+	}
+
+	// Close the first rows before starting the second query
+	rows.Close()
+	// loop through events to get the playlists
+	for i := range events {
+		sSQL = `SELECT playlistID, eventID, musicID, playorder, trackName, artist, lyrics, soprano, alto, tenor, allParts, piano FROM playlists JOIN music ON playlists.musicID = music.musicTrackID WHERE eventID = ? ORDER BY playorder`
+		//fmt.Println(sSQL, event.EventID)
+		playlistRows, err := sqldb.DB.Query(sSQL, events[i].EventID)
+		if err != nil {
+			log.Println("Error querying database:", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer playlistRows.Close()
+
+		for playlistRows.Next() {
+			var playlist strt.PlaylistEntry
+			err = playlistRows.Scan(&playlist.ID, &playlist.EventID, &playlist.MusicTrack.MusicTrackID, &playlist.Playorder, &playlist.MusicTrack.TrackName, &playlist.MusicTrack.Artist, &playlist.MusicTrack.Lyrics, &playlist.MusicTrack.Soprano, &playlist.MusicTrack.Alto, &playlist.MusicTrack.Tenor, &playlist.MusicTrack.AllParts, &playlist.MusicTrack.Piano)
+			if err != nil {
+				log.Println("Error scanning row:", err)
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			fmt.Println(playlist)
+			events[i].Playlist = append(events[i].Playlist, playlist)
+		}
+		playlistRows.Close()
+	}
+
+	// Return the combined data
+	if err := json.NewEncoder(w).Encode(events); err != nil {
+		log.Println("Error encoding JSON:", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
 func EventArchive(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	vars := mux.Vars(r)
-	sqldb.Init()
+
 	id := vars["id"]
 	var archive strt.ArchiveEntry
 	var event strt.EventDetails
 	sSQL := "SELECT archive.archiveID, choirevents.location, choirevents.eventDate, choirevents.title, archive.report FROM choirevents JOIN archive ON archive.eventID=choirevents.eventID WHERE choirevents.eventID = ?"
 	rows, err := sqldb.DB.Query(sSQL, id)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error:", err)
 		archive.ArchiveID = -1
 		archive.Report = err.Error()
 		json.NewEncoder(w).Encode(archive)
@@ -680,7 +754,7 @@ func EventArchive(w http.ResponseWriter, r *http.Request) {
 
 		err = rows.Scan(&archive.ArchiveID, &event.Location, &sSQLDate, &event.Title, &archive.Report)
 		if err != nil {
-			log.Fatal(err)
+			log.Println("Error:", err)
 			archive.ArchiveID = -1
 			archive.Report = err.Error()
 			json.NewEncoder(w).Encode(archive)
@@ -707,7 +781,7 @@ func EventArchive(w http.ResponseWriter, r *http.Request) {
 	sSQL = "SELECT * FROM images WHERE eventID = ?"
 	rows, err = sqldb.DB.Query(sSQL, archive.EventDetails.EventID)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error:", err)
 		archive.ArchiveID = -1
 		archive.Report = err.Error()
 		json.NewEncoder(w).Encode(archive)
@@ -718,7 +792,7 @@ func EventArchive(w http.ResponseWriter, r *http.Request) {
 		var image strt.ImageDetail
 		err = rows.Scan(&image.ImageID, &image.Filename, &image.Caption, &image.EventID, &image.Height, &image.Width)
 		if err != nil {
-			log.Fatal(err)
+			log.Println("Error:", err)
 			archive.ArchiveID = -1
 			archive.Report = err.Error()
 			json.NewEncoder(w).Encode(archive)
@@ -730,7 +804,7 @@ func EventArchive(w http.ResponseWriter, r *http.Request) {
 	sSQL = "SELECT * FROM clips WHERE eventID = ?"
 	rows, err = sqldb.DB.Query(sSQL, archive.EventDetails.EventID)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error:", err)
 		archive.ArchiveID = -1
 		archive.Report = err.Error()
 		json.NewEncoder(w).Encode(archive)
@@ -741,7 +815,7 @@ func EventArchive(w http.ResponseWriter, r *http.Request) {
 		var clip strt.Clip
 		err = rows.Scan(&clip.ClipID, &clip.ClipURL, &clip.EventID, &clip.Caption)
 		if err != nil {
-			log.Fatal(err)
+			log.Println("Error:", err)
 			archive.ArchiveID = -1
 			archive.Report = err.Error()
 			json.NewEncoder(w).Encode(archive)
@@ -758,14 +832,14 @@ func EventImages(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	vars := mux.Vars(r)
-	sqldb.Init()
+
 	id := vars["id"]
 	var images []strt.ImageDetail
 	var image strt.ImageDetail
 	sSQL := "SELECT * FROM images WHERE eventID = ?"
 	rows, err := sqldb.DB.Query(sSQL, id)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -773,7 +847,7 @@ func EventImages(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		err = rows.Scan(&image.ImageID, &image.Filename, &image.Caption, &image.EventID, &image.Height, &image.Width)
 		if err != nil {
-			log.Fatal(err)
+			log.Println("Error:", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -787,14 +861,14 @@ func EventClips(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	vars := mux.Vars(r)
-	sqldb.Init()
+
 	id := vars["id"]
 	var clips []strt.Clip
 	var clip strt.Clip
 	sSQL := "SELECT * FROM clips WHERE eventID = ?"
 	rows, err := sqldb.DB.Query(sSQL, id)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -802,7 +876,7 @@ func EventClips(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		err = rows.Scan(&clip.ClipID, &clip.ClipURL, &clip.EventID, &clip.Caption)
 		if err != nil {
-			log.Fatal(err)
+			log.Println("Error:", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -817,12 +891,12 @@ func ClipDelete(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]
 	fmt.Println("ClipDelete " + id)
-	sqldb.Init()
+
 	sSQL := "DELETE FROM clips WHERE clipID = ?"
 	_, err := sqldb.DB.Exec(sSQL, id)
 	blankClip := strt.Clip{}
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error:", err)
 		blankClip.ClipID = -1
 		blankClip.ClipURL = err.Error()
 		json.NewEncoder(w).Encode(blankClip)
@@ -837,67 +911,80 @@ func RandomImagesGET(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	sqldb.Init()
-	// the records value is a json object for a screensize
-	vars := mux.Vars(r)
-	var rec strt.ScreenSize
-	err := json.Unmarshal([]byte(vars["scr"]), &rec)
+
+	// Get the screen size and number of images to return
+	screen := r.URL.Query().Get("screen")
+	imagesStr := r.URL.Query().Get("images")
+	imageReq, err := strconv.Atoi(imagesStr)
 	if err != nil {
-		http.Error(w, "Invalid screen size format", http.StatusBadRequest)
+		http.Error(w, "Invalid width parameter", http.StatusBadRequest)
 		return
 	}
-	// based on the screensize establish if it is desktop or mobile
-	filepath := "Images/Desktop"
-	const (
-		maxMobileWidth  = 800
-		maxMobileHeight = 1280
-		minPixelRatio   = 1.5
-	)
 
-	if (rec.Width <= maxMobileWidth && rec.Height <= maxMobileHeight) || float64(rec.DevicePixelRatio) >= minPixelRatio {
-		filepath = "Images/Mobile"
+	// Determine if the device is desktop or mobile
+	filepath := "images/desktop"
+	if screen == "mobile" {
+		filepath = "images/mobile"
+	} else {
+		filepath = "images/desktop"
 	}
 
-	sSQL := "SELECT filename FROM images ORDER BY RAND() LIMIT ?"
-	rows, err := sqldb.DB.Query(sSQL, rec.Images)
+	// Check if the database connection is initialized
+	if sqldb.DB == nil {
+		log.Println("Database connection is not initialized")
+		// initialize the database connection
+
+	}
+
+	// Query the database for random images
+	sSQL := "SELECT imageID, filename, caption, eventID, height, width FROM images WHERE filename LIKE 'dt%' ORDER BY RAND() LIMIT ?"
+	rows, err := sqldb.DB.Query(sSQL, imageReq)
 	if err != nil {
-		log.Fatal(err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Println("Error querying database:", err)
+		http.Error(w, "Database query error", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
-	//declare an array of image files
-	var imageName string
-	var imageFiles []string
+
+	var images []strt.ImageDetail
 	for rows.Next() {
-		err = rows.Scan(&imageName)
+		var image strt.ImageDetail
+		err = rows.Scan(&image.ImageID, &image.Filename, &image.Caption, &image.EventID, &image.Height, &image.Width)
 		if err != nil {
-			log.Fatal(err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			log.Println("Error scanning row:", err)
+			http.Error(w, "Error scanning row", http.StatusInternalServerError)
 			return
 		}
-		// if the image is for mobile then the dt prefix has to be replaced with mb
-		if filepath == "Images/Mobile" {
-			imageName = strings.Replace(imageName, "dt", "mb", 1)
+
+		// Adjust filename for mobile
+		if filepath == "images/mobile" {
+			image.Filename = strings.Replace(image.Filename, "dt", "mb", 1)
 		}
-		// add the image name to the path and add it to the array
-		imageName = filepath + "/" + imageName
-		imageFiles = append(imageFiles, imageName)
+		image.Filename = filepath + "/" + url.PathEscape(image.Filename)
+
+		// Confirm the file exists
+		log.Println("Checking file:", image.Filename)
+		if _, err := os.Stat("public/" + image.Filename); os.IsNotExist(err) {
+			log.Println("File does not exist:", image.Filename)
+			image.Filename = "https://via.placeholder.com/80"
+		}
+		images = append(images, image)
 	}
-	// return the array of image files
-	json.NewEncoder(w).Encode(imageFiles)
+
+	// Return the array of image files
+	json.NewEncoder(w).Encode(images)
 }
 
 func ThemeDetailsGET(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
-	sqldb.Init()
+
 	var theme strt.ThemeDetails
-	sqldb.Init()
+
 	sSQL := "SELECT * FROM themedetails"
 	rows, err := sqldb.DB.Query(sSQL)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -906,7 +993,7 @@ func ThemeDetailsGET(w http.ResponseWriter, r *http.Request) {
 
 		err = rows.Scan(&theme.ID, &theme.BoxColour, &theme.TextColour, &theme.TextFont, &theme.BackgroundImage, &theme.TextboxColour, &theme.LogoImage, &theme.BannerColour, &theme.MenuColour, &theme.ButtonColour, &theme.ButtonHover, &theme.ButtonTextColour, &theme.MenuTextColour, &theme.TextSize)
 		if err != nil {
-			log.Fatal(err)
+			log.Println("Error:", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -919,7 +1006,7 @@ func ThemeDetailsPUT(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	var theme strt.ThemeDetails
 	err := json.NewDecoder(r.Body).Decode(&theme)
-	sqldb.Init()
+
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -927,7 +1014,7 @@ func ThemeDetailsPUT(w http.ResponseWriter, r *http.Request) {
 	sSQL := "UPDATE themedetails SET boxColour = ?, textColour = ?, textFont = ?, backgroundImage = ?, textboxColour = ?, logoimage = ?, bannerColour = ?, menuColour = ?, buttonColour = ?, buttonHover = ?, buttonTextColour = ?, menuTextColour = ?, textSize = ?"
 	_, err = sqldb.DB.Exec(sSQL, theme.BoxColour, theme.TextColour, theme.TextFont, theme.BackgroundImage, theme.TextboxColour, theme.LogoImage, theme.BannerColour, theme.MenuColour, theme.ButtonColour, theme.ButtonHover, theme.ButtonTextColour, theme.MenuTextColour, theme.TextSize)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -938,7 +1025,7 @@ func ThemeDetailsRandom(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	var theme strt.ThemeDetails
-	sqldb.Init()
+
 	theme.BoxColour = "#" + fmt.Sprintf("%06x", rand.Intn(0xffffff))
 	theme.TextColour = "#" + fmt.Sprintf("%06x", rand.Intn(0xffffff))
 	theme.TextFont = "Impact"
@@ -955,7 +1042,7 @@ func ThemeDetailsRandom(w http.ResponseWriter, r *http.Request) {
 	sSQL := "UPDATE themedetails SET boxColour = ?, textColour = ?, textFont = ?, backgroundImage = ?, textboxColour = ?, logoimage = ?, bannerColour = ?, menuColour = ?, buttonColour = ?, buttonHover = ?, buttonTextColour = ?, menuTextColour = ?, textSize = ?"
 	_, err := sqldb.DB.Exec(sSQL, theme.BoxColour, theme.TextColour, theme.TextFont, theme.BackgroundImage, theme.TextboxColour, theme.LogoImage, theme.BannerColour, theme.MenuColour, theme.ButtonColour, theme.ButtonHover, theme.ButtonTextColour, theme.MenuTextColour, theme.TextSize)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -963,33 +1050,34 @@ func ThemeDetailsRandom(w http.ResponseWriter, r *http.Request) {
 }
 
 func MusicListGET(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("MusicListGET")
+	//fmt.Println("MusicListGET")
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	var musicTracks []strt.MusicTrack
 	var musicTrack strt.MusicTrack
 	// open the database
-	sqldb.Init()
+
 	sSQL := "SELECT * FROM music"
 	rows, err := sqldb.DB.Query(sSQL)
 	if err != nil {
 		fmt.Println("Error in query")
-		log.Fatal(err)
+		log.Println("Error:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
 	for rows.Next() {
 		// musicTrackID	int Auto Increment, trackName	varchar(100)	,artist	varchar(60)	,lyrics	varchar(120)	,soprano	varchar(120)	, alto	varchar(120)	,tenor	varchar(120)	,allParts	varchar(120)	,piano
-		err = rows.Scan(&musicTrack.ID, &musicTrack.TrackName, &musicTrack.Artist, &musicTrack.Lyrics, &musicTrack.Artist, &musicTrack.Soprano, &musicTrack.Alto, &musicTrack.Tenor, &musicTrack.AllParts)
+		err = rows.Scan(&musicTrack.MusicTrackID, &musicTrack.TrackName, &musicTrack.Artist, &musicTrack.Lyrics, &musicTrack.Soprano, &musicTrack.Alto, &musicTrack.Tenor, &musicTrack.AllParts, &musicTrack.Piano)
 		if err != nil {
 			fmt.Println(err)
 			fmt.Println("Error in MusicListGET")
-			log.Fatal(err)
+			log.Println("Error:", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		musicTracks = append(musicTracks, musicTrack)
+		//mt.Println(musicTracks)
 	}
 	json.NewEncoder(w).Encode(musicTracks)
 }
@@ -999,20 +1087,20 @@ func MusicTrackGET(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	vars := mux.Vars(r)
 	id := vars["id"]
-	sqldb.Init()
+
 	var musicTrack strt.MusicTrack
 	sSQL := "SELECT * FROM music WHERE musicTrackID = ?"
 	rows, err := sqldb.DB.Query(sSQL, id)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
 	for rows.Next() {
-		err = rows.Scan(&musicTrack.ID, &musicTrack.TrackName, &musicTrack.Lyrics, &musicTrack.Soprano, &musicTrack.Alto, &musicTrack.Tenor, &musicTrack.AllParts)
+		err = rows.Scan(&musicTrack.MusicTrackID, &musicTrack.TrackName, &musicTrack.Lyrics, &musicTrack.Soprano, &musicTrack.Alto, &musicTrack.Tenor, &musicTrack.AllParts)
 		if err != nil {
-			log.Fatal(err)
+			log.Println("Error:", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -1024,7 +1112,7 @@ func MusicTrackPOST(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	var musicTrack strt.MusicTrack
-	sqldb.Init()
+
 	err := json.NewDecoder(r.Body).Decode(&musicTrack)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1044,11 +1132,11 @@ func MusicTrackDELETE(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	vars := mux.Vars(r)
 	id := vars["id"]
-	sqldb.Init()
+
 	sSQL := "DELETE FROM music WHERE musicTrackID = ?"
 	_, err := sqldb.DB.Exec(sSQL, id)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -1059,14 +1147,14 @@ func MusicTrackPUT(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	var musicTrack strt.MusicTrack
-	sqldb.Init()
+
 	err := json.NewDecoder(r.Body).Decode(&musicTrack)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	sSQL := "UPDATE music SET trackName = ?, lyrics = ?, soprano = ?, alto = ?, tenor = ?, allParts = ? WHERE musicTrackID = ?"
-	_, err = sqldb.DB.Exec(sSQL, musicTrack.TrackName, musicTrack.Lyrics, musicTrack.Soprano, musicTrack.Alto, musicTrack.Tenor, musicTrack.AllParts, musicTrack.ID)
+	_, err = sqldb.DB.Exec(sSQL, musicTrack.TrackName, musicTrack.Lyrics, musicTrack.Soprano, musicTrack.Alto, musicTrack.Tenor, musicTrack.AllParts, musicTrack.MusicTrackID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -1078,7 +1166,7 @@ func ClipPOST(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	var clip strt.Clip
-	sqldb.Init()
+
 	err := json.NewDecoder(r.Body).Decode(&clip)
 	if err != nil {
 		clip.ClipID = -1
@@ -1101,7 +1189,7 @@ func ClipPOST(w http.ResponseWriter, r *http.Request) {
 	sSQL = "SELECT clipID FROM clips ORDER BY clipID DESC LIMIT 1"
 	rows, err := sqldb.DB.Query(sSQL)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error:", err)
 		// return the error
 		clip.ClipID = -1
 		clip.ClipURL = "Error: " + err.Error()
@@ -1113,7 +1201,7 @@ func ClipPOST(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		err = rows.Scan(&clip.ClipID)
 		if err != nil {
-			log.Fatal(err)
+			log.Println("Error:", err)
 			//http.Error(w, err.Error(), http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 
@@ -1128,7 +1216,7 @@ func ArchiveEntryPUT(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	var archive strt.ArchiveEntry
-	sqldb.Init()
+
 	err := json.NewDecoder(r.Body).Decode(&archive)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1147,7 +1235,7 @@ func ArchiveEntryPOST(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	var archive strt.ArchiveEntry
-	sqldb.Init()
+
 	err := json.NewDecoder(r.Body).Decode(&archive)
 
 	if err != nil {
@@ -1191,11 +1279,11 @@ func PlaylistsGET(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	var playlists []strt.PlaylistEntry
 	var playlist strt.PlaylistEntry
-	sqldb.Init()
+
 	sSQL := "SELECT * FROM playlists"
 	rows, err := sqldb.DB.Query(sSQL)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -1203,7 +1291,7 @@ func PlaylistsGET(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		err = rows.Scan(&playlist.PlaylistID, &playlist.ID, &playlist.Playorder)
 		if err != nil {
-			log.Fatal(err)
+			log.Println("Error:", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -1215,34 +1303,45 @@ func PlaylistsGET(w http.ResponseWriter, r *http.Request) {
 func PlaylistPOST(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
-	var playlists []strt.PlaylistEntry
-	sqldb.Init()
-	err := json.NewDecoder(r.Body).Decode(&playlists)
+	var playlist []strt.PlaylistEntry
+
+	err := json.NewDecoder(r.Body).Decode(&playlist)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	sSQL := "INSERT INTO playlists (musicID, playorder) VALUES (?, ?)"
-	for _, playlist := range playlists {
-		_, err = sqldb.DB.Exec(sSQL, playlist.ID, playlist.Playorder)
+	//dewlete the existing playlist for the event
+	sSQL := "DELETE FROM playlists WHERE eventID = ?"
+	_, err = sqldb.DB.Exec(sSQL, playlist[0].EventID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// insert the new playlist
+	for i := range playlist {
+		sSQL := "INSERT INTO playlists (eventID, musicID, playorder) VALUES (?, ?, ?)"
+		_, err = sqldb.DB.Exec(sSQL, playlist[i].EventID, playlist[i].MusicTrack.MusicTrackID, playlist[i].Playorder)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 	}
-	w.WriteHeader(http.StatusNoContent)
+	var response strt.PlaylistEntry
+	response.ID = 200
+	response.MusicTrack.TrackName = "Playlist Added"
+	json.NewEncoder(w).Encode(response)
 }
 
 func PlaylistDELETE(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	vars := mux.Vars(r)
-	sqldb.Init()
+
 	id := vars["id"]
 	sSQL := "DELETE FROM playlists WHERE playlistID = ?"
 	_, err := sqldb.DB.Exec(sSQL, id)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -1253,7 +1352,7 @@ func PlaylistPUT(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	var playlist strt.PlaylistEntry
-	sqldb.Init()
+
 	err := json.NewDecoder(r.Body).Decode(&playlist)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1273,25 +1372,37 @@ func PlaylistGET(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	vars := mux.Vars(r)
 	id := vars["id"]
-	sqldb.Init()
-	var playlist strt.PlaylistEntry
-	sSQL := "SELECT * FROM playlists WHERE playlistID = ?"
+	//fmt.Println("PlaylistGET " + id)
+
+	var playlists []strt.PlaylistEntry
+
+	var sSQL = `SELECT playlistID, eventID, musicID, playorder, trackName, artist, lyrics, soprano, alto, tenor, allParts, piano 
+                FROM playlists 
+                JOIN music ON playlists.musicID = music.musicTrackID 
+                WHERE eventID = ? 
+                ORDER BY playorder`
+
 	rows, err := sqldb.DB.Query(sSQL, id)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error querying database:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
+
 	for rows.Next() {
-		err = rows.Scan(&playlist.PlaylistID, &playlist.ID, &playlist.Playorder)
+		var playlist strt.PlaylistEntry
+		err = rows.Scan(&playlist.PlaylistID, &playlist.EventID, &playlist.MusicTrack.MusicTrackID, &playlist.Playorder, &playlist.MusicTrack.TrackName, &playlist.MusicTrack.Artist, &playlist.MusicTrack.Lyrics, &playlist.MusicTrack.Soprano, &playlist.MusicTrack.Alto, &playlist.MusicTrack.Tenor, &playlist.MusicTrack.AllParts, &playlist.MusicTrack.Piano)
 		if err != nil {
-			log.Fatal(err)
+			log.Println("Error scanning row:", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		playlists = append(playlists, playlist)
 	}
-	json.NewEncoder(w).Encode(playlist)
+
+	// Return the playlists, even if empty
+	json.NewEncoder(w).Encode(playlists)
 }
 
 func EventGET(w http.ResponseWriter, r *http.Request) {
@@ -1300,8 +1411,6 @@ func EventGET(w http.ResponseWriter, r *http.Request) {
 
 	vars := mux.Vars(r)
 	id := vars["id"]
-
-	sqldb.Init()
 
 	var event strt.EventDetails
 	sSQL := "SELECT * FROM choirevents WHERE eventID = ?"
@@ -1339,13 +1448,13 @@ func EventGET(w http.ResponseWriter, r *http.Request) {
 func EventsList(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
-	sqldb.Init()
+
 	var events []strt.EventDetails
 	var event strt.EventDetails
 	sSQL := "SELECT eventID, location, eventDate, title FROM choirevents" // WHERE eventDate >= curdate()"
 	rows, err := sqldb.DB.Query(sSQL)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -1354,7 +1463,7 @@ func EventsList(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		err = rows.Scan(&event.EventID, &event.Location, &sSQLDate, &event.Title)
 		if err != nil {
-			log.Fatal(err)
+			log.Println("Error:", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -1372,13 +1481,13 @@ func EventsList(w http.ResponseWriter, r *http.Request) {
 func EventsUpcomingGET(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
-	sqldb.Init()
+
 	var events []strt.EventDetails
 	var event strt.EventDetails
 	sSQL := "SELECT * FROM choirevents WHERE eventDate >= curdate()"
 	rows, err := sqldb.DB.Query(sSQL)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -1387,7 +1496,7 @@ func EventsUpcomingGET(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		err = rows.Scan(&event.EventID, &event.Location, &sSQLDate, &event.StartTime, &event.EndTime, &event.Price, &event.Title, &event.MeetingPoint, &event.Invitation)
 		if err != nil {
-			log.Fatal(err)
+			log.Println("Error:", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -1406,19 +1515,22 @@ func EventPOST(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	var event strt.EventDetails
-	sqldb.Init()
+
 	err := json.NewDecoder(r.Body).Decode(&event)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	//fmt.Println(event)
 	sSQL := "INSERT INTO choirevents (location, eventDate, startTime, endTime, price, title, invitation, meetingPoint) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-	_, err = sqldb.DB.Exec(sSQL, event.Location, event.EventDate, event.StartTime, event.EndTime, event.Price, event.Title, event.Invitation, event.MeetingPoint)
+	_, err = sqldb.DB.Exec(sSQL, event.Location, event.DateString, event.StartTime, event.EndTime, event.Price, event.Title, event.Invitation, event.MeetingPoint)
 	if err != nil {
+		fmt.Println(err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	event.Title = "Event Added"
+	json.NewEncoder(w).Encode(event)
 }
 
 func EventDELETE(w http.ResponseWriter, r *http.Request) {
@@ -1426,11 +1538,11 @@ func EventDELETE(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	vars := mux.Vars(r)
 	id := vars["id"]
-	sqldb.Init()
+
 	sSQL := "DELETE FROM choirevents WHERE eventID = ?"
 	_, err := sqldb.DB.Exec(sSQL, id)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -1441,7 +1553,7 @@ func EventPUT(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	var event strt.EventDetails
-	sqldb.Init()
+
 	err := json.NewDecoder(r.Body).Decode(&event)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1462,11 +1574,11 @@ func ImageGET(w http.ResponseWriter, r *http.Request) {
 	var image strt.ImageDetail
 	vars := mux.Vars(r)
 	id := vars["id"]
-	sqldb.Init()
+
 	sSQL := "SELECT * FROM images WHERE imageID = ?"
 	rows, err := sqldb.DB.Query(sSQL, id)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -1474,7 +1586,7 @@ func ImageGET(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		err = rows.Scan(&image.ImageID, &image.Filename, &image.Caption, &image.EventID, &image.Height, &image.Width)
 		if err != nil {
-			log.Fatal(err)
+			log.Println("Error:", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -1487,11 +1599,11 @@ func ImagesGET(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	var images []strt.ImageDetail
 	var image strt.ImageDetail
-	sqldb.Init()
+
 	sSQL := "SELECT * FROM images"
 	rows, err := sqldb.DB.Query(sSQL)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -1499,7 +1611,7 @@ func ImagesGET(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		err = rows.Scan(&image.ImageID, &image.Filename, &image.Caption, &image.EventID, &image.Height, &image.Width)
 		if err != nil {
-			log.Fatal(err)
+			log.Println("Error:", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -1665,7 +1777,7 @@ func ImageFilePOST(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Insert the file details into the database
-	sqldb.Init()
+
 	sSQL := "INSERT INTO images (filename, caption, eventID, height, width) VALUES (?, ?, ?, ?, ?)"
 	_, err = sqldb.DB.Exec(sSQL, image.Filename, image.Caption, image.EventID, image.Height, image.Width)
 	if err != nil {
@@ -1709,7 +1821,7 @@ func ImagesPOST(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	var images []strt.ImageDetail
-	sqldb.Init()
+
 	err := json.NewDecoder(r.Body).Decode(&images)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1725,7 +1837,7 @@ func ImagesPOST(w http.ResponseWriter, r *http.Request) {
 		sSQL = "SELECT imageID FROM images LIMIT 1 ORDER BY imageID DESC"
 		rows, err := sqldb.DB.Query(sSQL)
 		if err != nil {
-			log.Fatal(err)
+			log.Println("Error:", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -1734,7 +1846,7 @@ func ImagesPOST(w http.ResponseWriter, r *http.Request) {
 		for rows.Next() {
 			err = rows.Scan(&image.ImageID)
 			if err != nil {
-				log.Fatal(err)
+				log.Println("Error:", err)
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
@@ -1753,12 +1865,12 @@ func ImageDELETE(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	vars := mux.Vars(r)
 	id := vars["id"]
-	sqldb.Init()
+
 	// we need to get the filename so we can delete the files
 	sSQL := "SELECT filename FROM images WHERE imageID = ?"
 	rows, err := sqldb.DB.Query(sSQL, id)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -1767,7 +1879,7 @@ func ImageDELETE(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		err = rows.Scan(&filename)
 		if err != nil {
-			log.Fatal(err)
+			log.Println("Error:", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -1776,29 +1888,29 @@ func ImageDELETE(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(filename, "bg") {
 		err = os.Remove("images/background/" + filename)
 		if err != nil {
-			log.Fatal(err)
+			log.Println("Error:", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 	} else if strings.HasPrefix(filename, "dt") {
 		err = os.Remove("Images/Desktop/" + filename)
 		if err != nil {
-			log.Fatal(err)
+			log.Println("Error:", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		// then remove the prefix and replace it with mb
 		mbfile := strings.Replace(filename, "dt", "mb", 1)
-		err = os.Remove("Images/Mobile/" + mbfile)
+		err = os.Remove("Images/mobile/" + mbfile)
 		if err != nil {
-			log.Fatal(err)
+			log.Println("Error:", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 	} else if strings.HasPrefix(filename, "lg") {
 		err = os.Remove("Images/Logo/" + filename)
 		if err != nil {
-			log.Fatal(err)
+			log.Println("Error:", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -1809,7 +1921,7 @@ func ImageDELETE(w http.ResponseWriter, r *http.Request) {
 	sSQL = "DELETE FROM images WHERE imageID = ?"
 	_, err = sqldb.DB.Exec(sSQL, id)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -1821,7 +1933,7 @@ func ImagePUT(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	var image strt.ImageDetail
-	sqldb.Init()
+
 	err := json.NewDecoder(r.Body).Decode(&image)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1840,11 +1952,11 @@ func SiteInfoGET(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	var siteInfo strt.SiteInfo
-	sqldb.Init()
+
 	sSQL := "SELECT * FROM siteinfo"
 	rows, err := sqldb.DB.Query(sSQL)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error:", err)
 		fmt.Println("Error in SiteInfoGET")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -1854,7 +1966,7 @@ func SiteInfoGET(w http.ResponseWriter, r *http.Request) {
 		err = rows.Scan(&siteInfo.ID, &siteInfo.HomeTitle, &siteInfo.HomeText, &siteInfo.AboutTitle, &siteInfo.AboutText, &siteInfo.ArchiveTitle, &siteInfo.ArchiveText, &siteInfo.NoticesTitle, &siteInfo.NoticesText, &siteInfo.BookingTitle, &siteInfo.BookingText, &siteInfo.MembersTitle, &siteInfo.MembersText, &siteInfo.AppealTitle, &siteInfo.AppealText, &siteInfo.SettingsTitle, &siteInfo.SettingsText)
 		if err != nil {
 
-			log.Fatal(err)
+			log.Println("Error:", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -1866,7 +1978,7 @@ func SiteInfoPUT(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	var siteInfo strt.SiteInfo
-	sqldb.Init()
+
 	err := json.NewDecoder(r.Body).Decode(&siteInfo)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1878,10 +1990,11 @@ func SiteInfoPUT(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	//return the object
+	json.NewEncoder(w).Encode(siteInfo)
 }
 
 // to build the project run the following command
 // go build -o bin/choirapi main.go
 // to run the project run the following command
-// ./bin/choirapi
+// /bin/choirapi

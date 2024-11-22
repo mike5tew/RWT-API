@@ -1,9 +1,9 @@
 package controller
 
 import (
+	"RWTAPI/events"
 	"fmt"
 	"net/http"
-	"packages/events"
 
 	"github.com/gorilla/mux"
 	"github.com/rs/cors"
@@ -16,7 +16,7 @@ func InitHandlers() {
 	router.HandleFunc("/ArchiveEntryPOST", events.ArchiveEntryPOST).Methods("POST")
 	router.HandleFunc("/ArchiveEntryPUT", events.ArchiveEntryPUT).Methods("PUT")
 	router.HandleFunc("/ArchiveGET/{id}", events.ArchiveGET).Methods("GET")
-	router.HandleFunc("/ArchivesGET/{records}", events.ArchivesGET).Methods("GET")
+	router.HandleFunc("/ArchivesGET", events.ArchivesGET).Methods("GET")
 	router.HandleFunc("/ClipDELETE/{id}", events.ClipDelete).Methods("DELETE")
 	router.HandleFunc("/ClipsGET/{id}", events.EventClips).Methods("GET")
 	router.HandleFunc("/ClipPOST", events.ClipPOST).Methods("POST")
@@ -46,7 +46,7 @@ func InitHandlers() {
 	router.HandleFunc("/PlaylistPOST", events.PlaylistPOST).Methods("POST")
 	router.HandleFunc("/SiteInfoGET", events.SiteInfoGET).Methods("GET")
 	router.HandleFunc("/SiteInfoPUT", events.SiteInfoPUT).Methods("PUT")
-	router.HandleFunc("/RandomImagesGET/{scr}", events.RandomImagesGET).Methods("GET")
+	router.HandleFunc("/RandomImagesGET", events.RandomImagesGET).Methods("GET")
 	router.HandleFunc("/ThemeDetailsGET", events.ThemeDetailsGET).Methods("GET")
 	router.HandleFunc("/ThemeDetailsPUT", events.ThemeDetailsPUT).Methods("PUT")
 	router.HandleFunc("/ThemeDetailsRandom", events.ThemeDetailsRandom).Methods("GET")
@@ -55,18 +55,15 @@ func InitHandlers() {
 	router.HandleFunc("/upload", events.FileDetailsPOST).Methods("POST")
 	router.HandleFunc("/uploadFile", events.UploadFile).Methods("POST")
 
+	// Serve static files from the public directory
+	router.PathPrefix("/images/").Handler(http.StripPrefix("/images/", http.FileServer(http.Dir("./public/images"))))
+
 	c := cors.New(cors.Options{
 		AllowedOrigins: []string{"http://localhost:3000"},
 		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE"},
 	})
 
 	handler := c.Handler(router)
-	fmt.Println("Server is running on port 8086")
-	http.Handle("/", http.FileServer(http.Dir("./public")))
+	fmt.Println("File Server is running on port 8086")
 	http.ListenAndServe(":8086", handler)
-	// in this instance the url of the giz.jpg file in the public directory would be?
-	// http://localhost:8086/dt8giz.jpg
-	// this is showing as not found because... the file is not in the public directory
-	// the file is in the public/images directory
-	//dt8giz.jpg is in the public directory but still not visible because the file is not in the public directory.  The public directory should be in the same directory as the server.go file
 }
