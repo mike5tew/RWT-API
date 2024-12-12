@@ -3,11 +3,21 @@ package controller
 import (
 	"RWTAPI/events"
 	"fmt"
+	"log"
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/rs/cors"
 )
+
+func contentTypeMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		next.ServeHTTP(w, r)
+	})
+}
 
 // This function provides all of the endpoints listed in events.go
 func InitHandlers() {
@@ -54,16 +64,29 @@ func InitHandlers() {
 	router.HandleFunc("/UpcomingEventsListsGET", events.UpcomingEventsListsGET).Methods("GET")
 	router.HandleFunc("/upload", events.FileDetailsPOST).Methods("POST")
 	router.HandleFunc("/uploadFile", events.UploadFile).Methods("POST")
+	router.HandleFunc("/instagram-oembed", events.InstagramEmbed).Methods("GET")
 
 	// Serve static files from the public directory
-	router.PathPrefix("/images/").Handler(http.StripPrefix("/images/", http.FileServer(http.Dir("./public/images"))))
+	router.PathPrefix("/images/").Handler(http.StripPrefix("/images/", http.FileServer(http.Dir("/app/images"))))
+	router.PathPrefix("/music/").Handler(http.StripPrefix("/music/", http.FileServer(http.Dir("/app/music"))))
+
+	// Initialize CORS configuration
+	corsWhitelist := os.Getenv("CORS_ORIGIN_WHITELIST")
+	if corsWhitelist == "" {
+		log.Fatal("CORS_ORIGIN_WHITELIST is not set")
+	}
+	whitelist := strings.Split(corsWhitelist, ",")
+	fmt.Println("CORS Origin Whitelist:", whitelist)
 
 	c := cors.New(cors.Options{
-		AllowedOrigins: []string{"http://localhost:3000"},
-		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE"},
+		AllowedOrigins:   whitelist,
+		AllowCredentials: true,
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE"},
 	})
 
-	handler := c.Handler(router)
-	fmt.Println("File Server is running on port 8086")
-	http.ListenAndServe(":8086", handler)
+	handler := c.Handler(contentTypeMiddleware(router))
+
+	// handler := c.Handler(router)
+	fmt.Println("File Server is running on port 8080")
+	http.ListenAndServe(":8080", handler)
 }

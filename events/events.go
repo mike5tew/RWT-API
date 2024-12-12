@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -33,8 +34,7 @@ func ParseMySQLDateTime(datetimeStr string) (time.Time, error) {
 // Translate the following functions into endpoints
 // 1. upload
 func FileDetailsPOST(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 
 	//get the json data from the request
@@ -215,8 +215,7 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 // }
 
 func ArchiveGET(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	vars := mux.Vars(r)
 	id := vars["id"]
 
@@ -317,13 +316,10 @@ func ArchiveGET(w http.ResponseWriter, r *http.Request) {
 
 // GET a given number of archive records
 func ArchivesGET(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	// Initialize the database connection
 
 	// Get the screen size and number of images to return
-
 	screen := r.URL.Query().Get("screen")
 	imagesStr := r.URL.Query().Get("archives")
 	iRecords, err := strconv.Atoi(imagesStr)
@@ -347,6 +343,7 @@ func ArchivesGET(w http.ResponseWriter, r *http.Request) {
 	var clips []strt.Clip
 	var errorArch strt.ArchiveEntry
 	var errorArray []strt.ArchiveEntry
+
 	// Gather the archive details from the database
 	sSQLDate := ""
 	sSQL := "SELECT archive.archiveID, choirevents.location, choirevents.eventDate, choirevents.title, archive.report, archive.eventID FROM choirevents JOIN archive ON archive.eventID = choirevents.eventID WHERE choirevents.eventDate < CURDATE() ORDER BY choirevents.eventDate DESC LIMIT ?"
@@ -356,8 +353,8 @@ func ArchivesGET(w http.ResponseWriter, r *http.Request) {
 		errorArch.ArchiveID = -1
 		errorArch.Report = err.Error()
 		errorArray = append(errorArray, errorArch)
-		//return the error array
 		json.NewEncoder(w).Encode(errorArray)
+		return
 	}
 	defer rows.Close()
 
@@ -369,8 +366,8 @@ func ArchivesGET(w http.ResponseWriter, r *http.Request) {
 			errorArch.ArchiveID = -1
 			errorArch.Report = err.Error()
 			errorArray = append(errorArray, errorArch)
-			//return the error array
 			json.NewEncoder(w).Encode(errorArray)
+			return
 		}
 		parsedDate, err := ParseMySQLDateTime(sSQLDate)
 		if err != nil {
@@ -378,33 +375,34 @@ func ArchivesGET(w http.ResponseWriter, r *http.Request) {
 			errorArch.ArchiveID = -1
 			errorArch.Report = err.Error()
 			errorArray = append(errorArray, errorArch)
-			//return the error array
 			json.NewEncoder(w).Encode(errorArray)
+			return
 		}
-		// convert the data from ssqldate
-
 		archive.EventDetails.EventDate = parsedDate.Format("2006-01-02")
 		archives = append(archives, archive)
 		events = events + strconv.Itoa(archive.EventDetails.EventID) + ","
 	}
-	// Remove the trailing comma
-	events = events[:len(events)-1]
-	events = "(" + events + ")"
-	if events == "()" {
+
+	// Remove the trailing comma if events is not empty
+	if len(events) > 0 {
+		events = events[:len(events)-1]
+		events = "(" + events + ")"
+	} else {
 		json.NewEncoder(w).Encode(archives)
 		return
 	}
+
 	// Get the images from all of the events
 	sSQL = "SELECT * FROM images WHERE eventID IN " + events
-	fmt.Println(sSQL)
+	// fmt.Println(sSQL)
 	rows, err = sqldb.DB.Query(sSQL)
 	if err != nil {
 		log.Println("Error querying images:", err)
 		errorArch.ArchiveID = -1
 		errorArch.Report = err.Error()
 		errorArray = append(errorArray, errorArch)
-		//return the error array
 		json.NewEncoder(w).Encode(errorArray)
+		return
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -415,10 +413,9 @@ func ArchivesGET(w http.ResponseWriter, r *http.Request) {
 			errorArch.ArchiveID = -1
 			errorArch.Report = err.Error()
 			errorArray = append(errorArray, errorArch)
-			//return the error array
 			json.NewEncoder(w).Encode(errorArray)
+			return
 		}
-		// Adjust filename for mobile
 		if filepath == "images/mobile" {
 			image.Filename = strings.Replace(image.Filename, "dt", "mb", 1)
 		}
@@ -428,15 +425,15 @@ func ArchivesGET(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get the clips from all of the events
-	sSQL = "SELECT * FROM clips WHERE eventID = ?"
-	rows, err = sqldb.DB.Query(sSQL, events)
+	sSQL = "SELECT * FROM clips WHERE eventID IN " + events
+	rows, err = sqldb.DB.Query(sSQL)
 	if err != nil {
 		log.Println("Error querying clips:", err)
 		errorArch.ArchiveID = -1
 		errorArch.Report = err.Error()
 		errorArray = append(errorArray, errorArch)
-		//return the error array
 		json.NewEncoder(w).Encode(errorArray)
+		return
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -447,8 +444,8 @@ func ArchivesGET(w http.ResponseWriter, r *http.Request) {
 			errorArch.ArchiveID = -1
 			errorArch.Report = err.Error()
 			errorArray = append(errorArray, errorArch)
-			//return the error array
 			json.NewEncoder(w).Encode(errorArray)
+			return
 		}
 		clips = append(clips, clip)
 	}
@@ -466,13 +463,13 @@ func ArchivesGET(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+
 	// Return the data
 	json.NewEncoder(w).Encode(archives)
 }
 
 func ArchiveEntryDELETE(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	vars := mux.Vars(r)
 	id := vars["id"]
 
@@ -487,8 +484,8 @@ func ArchiveEntryDELETE(w http.ResponseWriter, r *http.Request) {
 }
 
 func Login(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	// w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
+	//
 	var user strt.User
 
 	fmt.Println("Login")
@@ -521,8 +518,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 }
 
 func MessagesGET(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 
 	var messages []strt.Message
@@ -548,8 +544,7 @@ func MessagesGET(w http.ResponseWriter, r *http.Request) {
 }
 
 func MessagePOST(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	var message strt.Message
 	//fmt.Println("MessagePOST")
 	//fmt.Println(r.Body)
@@ -583,8 +578,7 @@ func MessagePOST(w http.ResponseWriter, r *http.Request) {
 }
 
 func MessageDELETE(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	w.Header().Set("Access-Control-Allow-Methods", "DELETE")
 
@@ -603,8 +597,7 @@ func MessageDELETE(w http.ResponseWriter, r *http.Request) {
 }
 
 func MessagePUT(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	var message strt.Message
 
 	err := json.NewDecoder(r.Body).Decode(&message)
@@ -622,8 +615,6 @@ func MessagePUT(w http.ResponseWriter, r *http.Request) {
 }
 
 func UpcomingEventsListsGET(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 
 	var events []strt.EventDetails
 	var event strt.EventDetails
@@ -658,8 +649,7 @@ func UpcomingEventsListsGET(w http.ResponseWriter, r *http.Request) {
 
 // GET upcoming playlists
 func UpcomingPlaylistsGET(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 
 	// Initialize the database connection
@@ -731,8 +721,7 @@ func UpcomingPlaylistsGET(w http.ResponseWriter, r *http.Request) {
 	}
 }
 func EventArchive(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	vars := mux.Vars(r)
 
@@ -828,8 +817,7 @@ func EventArchive(w http.ResponseWriter, r *http.Request) {
 }
 
 func EventImages(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	vars := mux.Vars(r)
 
@@ -857,8 +845,7 @@ func EventImages(w http.ResponseWriter, r *http.Request) {
 }
 
 func EventClips(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	vars := mux.Vars(r)
 
@@ -886,8 +873,7 @@ func EventClips(w http.ResponseWriter, r *http.Request) {
 }
 
 func ClipDelete(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	vars := mux.Vars(r)
 	id := vars["id"]
 	fmt.Println("ClipDelete " + id)
@@ -908,10 +894,7 @@ func ClipDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 func RandomImagesGET(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
 	// Get the screen size and number of images to return
 	screen := r.URL.Query().Get("screen")
 	imagesStr := r.URL.Query().Get("images")
@@ -920,25 +903,25 @@ func RandomImagesGET(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid width parameter", http.StatusBadRequest)
 		return
 	}
-
+	// create an empty archive entry
+	var Arch strt.ArchiveEntry
 	// Determine if the device is desktop or mobile
-	filepath := "images/desktop"
+	filepath := "/app/images/desktop"
+	prefix := "dt%"
 	if screen == "mobile" {
-		filepath = "images/mobile"
-	} else {
-		filepath = "images/desktop"
+		filepath = "/app/images/mobile"
+		prefix = "mb%"
 	}
 
 	// Check if the database connection is initialized
 	if sqldb.DB == nil {
 		log.Println("Database connection is not initialized")
 		// initialize the database connection
-
 	}
 
 	// Query the database for random images
-	sSQL := "SELECT imageID, filename, caption, eventID, height, width FROM images WHERE filename LIKE 'dt%' ORDER BY RAND() LIMIT ?"
-	rows, err := sqldb.DB.Query(sSQL, imageReq)
+	sSQL := "SELECT imageID, filename, caption, eventID, height, width FROM images WHERE filename LIKE ? ORDER BY RAND() LIMIT ?"
+	rows, err := sqldb.DB.Query(sSQL, prefix, imageReq)
 	if err != nil {
 		log.Println("Error querying database:", err)
 		http.Error(w, "Database query error", http.StatusInternalServerError)
@@ -946,7 +929,6 @@ func RandomImagesGET(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var images []strt.ImageDetail
 	for rows.Next() {
 		var image strt.ImageDetail
 		err = rows.Scan(&image.ImageID, &image.Filename, &image.Caption, &image.EventID, &image.Height, &image.Width)
@@ -957,27 +939,92 @@ func RandomImagesGET(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Adjust filename for mobile
-		if filepath == "images/mobile" {
+		if filepath == "/app/images/mobile" {
 			image.Filename = strings.Replace(image.Filename, "dt", "mb", 1)
 		}
 		image.Filename = filepath + "/" + url.PathEscape(image.Filename)
 
 		// Confirm the file exists
-		log.Println("Checking file:", image.Filename)
-		if _, err := os.Stat("public/" + image.Filename); os.IsNotExist(err) {
+		if _, err := os.Stat(image.Filename); os.IsNotExist(err) {
 			log.Println("File does not exist:", image.Filename)
 			image.Filename = "https://via.placeholder.com/80"
 		}
-		images = append(images, image)
+		// remove the /app prefix
+		image.Filename = image.Filename[4:]
+		// Add the image to the array
+		Arch.Images = append(Arch.Images, image)
 	}
 
-	// Return the array of image files
-	json.NewEncoder(w).Encode(images)
+	// collect the same number of clips for this event if they exist
+	sSQL = "SELECT clipID, clipURL, eventID, caption FROM clips ORDER BY RAND() LIMIT ?"
+	rows, err = sqldb.DB.Query(sSQL, imageReq)
+	if err != nil {
+		log.Println("Error querying database:", err)
+		http.Error(w, "Database query error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	// Add the clips to the array
+	for rows.Next() {
+		var clip strt.Clip
+		err = rows.Scan(&clip.ClipID, &clip.ClipURL, &clip.EventID, &clip.Caption)
+		if err != nil {
+			log.Println("Error scanning row:", err)
+			http.Error(w, "Error scanning row", http.StatusInternalServerError)
+			return
+		}
+		Arch.Clips = append(Arch.Clips, clip)
+	}
+
+	// // Fetch Instagram oEmbed data for each clip
+	// for i := range Arch.Clips {
+	// 	if strings.Contains(Arch.Clips[i].ClipURL, "instagram.com") {
+	// 		// this is the embed text for the clip
+	// 		Arch.Clips[i].ClipURL = "<blockquote class=\"instagram-media\" data-instgrm-captioned data-instgrm-permalink=\"" + Arch.Clips[i].ClipURL + "\" data-instgrm-version=\"12\"></blockquote>"
+	// apiURL := "https://api.instagram.com/oembed?url=" + Arch.Clips[i].ClipURL
+	// resp, err := http.Get(apiURL)
+	// if err != nil {
+	// 	log.Println("Error fetching Instagram oEmbed data:", err)
+	// 	http.Error(w, "Error fetching Instagram oEmbed data", http.StatusInternalServerError)
+	// 	return
+	// }
+	// defer resp.Body.Close()
+
+	// if resp.StatusCode != http.StatusOK {
+	// 	http.Error(w, "Error fetching Instagram oEmbed data", resp.StatusCode)
+	// 	return
+	// }
+
+	// contentType := resp.Header.Get("Content-Type")
+	// if !strings.Contains(contentType, "application/json") {
+	// 	log.Println("Invalid content type:", contentType, resp)
+	// 	http.Error(w, "Invalid content type", http.StatusInternalServerError)
+	// 	return
+	// }
+
+	// var data map[string]interface{}
+	// if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+	// 	log.Println("Error decoding Instagram oEmbed response:", err)
+	// 	http.Error(w, "Error decoding Instagram oEmbed response", http.StatusInternalServerError)
+	// 	return
+	// }
+
+	// Add the Instagram data to the clip
+	// 		if html, ok := data["html"].(string); ok {
+	// 			Arch.Clips[i].ClipURL = html
+	// 		}
+	// 	}
+	// }
+
+	// Return the archive entry with images and clips
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(Arch); err != nil {
+		log.Println("Error encoding response:", err)
+		http.Error(w, "Error encoding response", http.StatusInternalServerError)
+	}
 }
 
 func ThemeDetailsGET(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 
 	var theme strt.ThemeDetails
 
@@ -1002,8 +1049,7 @@ func ThemeDetailsGET(w http.ResponseWriter, r *http.Request) {
 }
 
 func ThemeDetailsPUT(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	var theme strt.ThemeDetails
 	err := json.NewDecoder(r.Body).Decode(&theme)
 
@@ -1022,8 +1068,7 @@ func ThemeDetailsPUT(w http.ResponseWriter, r *http.Request) {
 }
 
 func ThemeDetailsRandom(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	var theme strt.ThemeDetails
 
 	theme.BoxColour = "#" + fmt.Sprintf("%06x", rand.Intn(0xffffff))
@@ -1051,8 +1096,7 @@ func ThemeDetailsRandom(w http.ResponseWriter, r *http.Request) {
 
 func MusicListGET(w http.ResponseWriter, r *http.Request) {
 	//fmt.Println("MusicListGET")
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	var musicTracks []strt.MusicTrack
 	var musicTrack strt.MusicTrack
 	// open the database
@@ -1083,8 +1127,7 @@ func MusicListGET(w http.ResponseWriter, r *http.Request) {
 }
 
 func MusicTrackGET(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	vars := mux.Vars(r)
 	id := vars["id"]
 
@@ -1109,8 +1152,7 @@ func MusicTrackGET(w http.ResponseWriter, r *http.Request) {
 }
 
 func MusicTrackPOST(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	var musicTrack strt.MusicTrack
 
 	err := json.NewDecoder(r.Body).Decode(&musicTrack)
@@ -1128,8 +1170,7 @@ func MusicTrackPOST(w http.ResponseWriter, r *http.Request) {
 }
 
 func MusicTrackDELETE(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	vars := mux.Vars(r)
 	id := vars["id"]
 
@@ -1144,8 +1185,7 @@ func MusicTrackDELETE(w http.ResponseWriter, r *http.Request) {
 }
 
 func MusicTrackPUT(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	var musicTrack strt.MusicTrack
 
 	err := json.NewDecoder(r.Body).Decode(&musicTrack)
@@ -1163,8 +1203,7 @@ func MusicTrackPUT(w http.ResponseWriter, r *http.Request) {
 }
 
 func ClipPOST(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	var clip strt.Clip
 
 	err := json.NewDecoder(r.Body).Decode(&clip)
@@ -1213,8 +1252,7 @@ func ClipPOST(w http.ResponseWriter, r *http.Request) {
 }
 
 func ArchiveEntryPUT(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	var archive strt.ArchiveEntry
 
 	err := json.NewDecoder(r.Body).Decode(&archive)
@@ -1232,8 +1270,7 @@ func ArchiveEntryPUT(w http.ResponseWriter, r *http.Request) {
 }
 
 func ArchiveEntryPOST(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	var archive strt.ArchiveEntry
 
 	err := json.NewDecoder(r.Body).Decode(&archive)
@@ -1275,8 +1312,7 @@ func ArchiveEntryPOST(w http.ResponseWriter, r *http.Request) {
 }
 
 func PlaylistsGET(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	var playlists []strt.PlaylistEntry
 	var playlist strt.PlaylistEntry
 
@@ -1301,8 +1337,7 @@ func PlaylistsGET(w http.ResponseWriter, r *http.Request) {
 }
 
 func PlaylistPOST(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	var playlist []strt.PlaylistEntry
 
 	err := json.NewDecoder(r.Body).Decode(&playlist)
@@ -1333,8 +1368,7 @@ func PlaylistPOST(w http.ResponseWriter, r *http.Request) {
 }
 
 func PlaylistDELETE(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	vars := mux.Vars(r)
 
 	id := vars["id"]
@@ -1349,8 +1383,7 @@ func PlaylistDELETE(w http.ResponseWriter, r *http.Request) {
 }
 
 func PlaylistPUT(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	var playlist strt.PlaylistEntry
 
 	err := json.NewDecoder(r.Body).Decode(&playlist)
@@ -1368,8 +1401,7 @@ func PlaylistPUT(w http.ResponseWriter, r *http.Request) {
 }
 
 func PlaylistGET(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	vars := mux.Vars(r)
 	id := vars["id"]
 	//fmt.Println("PlaylistGET " + id)
@@ -1406,8 +1438,6 @@ func PlaylistGET(w http.ResponseWriter, r *http.Request) {
 }
 
 func EventGET(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 
 	vars := mux.Vars(r)
 	id := vars["id"]
@@ -1446,8 +1476,6 @@ func EventGET(w http.ResponseWriter, r *http.Request) {
 }
 
 func EventsList(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 
 	var events []strt.EventDetails
 	var event strt.EventDetails
@@ -1479,8 +1507,6 @@ func EventsList(w http.ResponseWriter, r *http.Request) {
 }
 
 func EventsUpcomingGET(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 
 	var events []strt.EventDetails
 	var event strt.EventDetails
@@ -1512,8 +1538,7 @@ func EventsUpcomingGET(w http.ResponseWriter, r *http.Request) {
 }
 
 func EventPOST(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	var event strt.EventDetails
 
 	err := json.NewDecoder(r.Body).Decode(&event)
@@ -1534,8 +1559,7 @@ func EventPOST(w http.ResponseWriter, r *http.Request) {
 }
 
 func EventDELETE(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	vars := mux.Vars(r)
 	id := vars["id"]
 
@@ -1550,8 +1574,7 @@ func EventDELETE(w http.ResponseWriter, r *http.Request) {
 }
 
 func EventPUT(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	var event strt.EventDetails
 
 	err := json.NewDecoder(r.Body).Decode(&event)
@@ -1569,8 +1592,7 @@ func EventPUT(w http.ResponseWriter, r *http.Request) {
 }
 
 func ImageGET(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	var image strt.ImageDetail
 	vars := mux.Vars(r)
 	id := vars["id"]
@@ -1595,8 +1617,7 @@ func ImageGET(w http.ResponseWriter, r *http.Request) {
 }
 
 func ImagesGET(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	var images []strt.ImageDetail
 	var image strt.ImageDetail
 
@@ -1642,11 +1663,9 @@ func isValidFileType(fileType string) bool {
 // ImageFilePOST is used to upload an image file to the server
 // The images will either be for the background, desktop or mobile and will be stored in the images directory
 func ImageFilePOST(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	fmt.Println("Content-Type:", r.Header.Get("Content-Type"))
 
-	// Parse the multipart form TO 50MB
+	// Parse the multipart form to 50MB
 	err := r.ParseMultipartForm(50 << 20)
 	if err != nil {
 		fmt.Println("Error parsing multipart form:", err)
@@ -1694,8 +1713,22 @@ func ImageFilePOST(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Ensure the temporary directory exists
+	tempDir := "/root/temp-images"
+	if _, err := os.Stat(tempDir); os.IsNotExist(err) {
+		err = os.MkdirAll(tempDir, os.ModePerm)
+		if err != nil {
+			fmt.Println("Error creating temporary directory:", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+	fmt.Println("Filename:", handler.Filename)
+	fmt.Println("Size:", handler.Size)
+	fmt.Println("Header:", handler.Header)
+
 	// Create a temporary file
-	tempFile, err := os.CreateTemp("temp-images", "upload-*.png")
+	tempFile, err := os.CreateTemp(tempDir, "temp-*.png")
 	if err != nil {
 		fmt.Println("Error creating temporary file:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1723,17 +1756,19 @@ func ImageFilePOST(w http.ResponseWriter, r *http.Request) {
 	var destinationDir string
 	switch {
 	case strings.HasPrefix(handler.Filename, "bg"):
-		destinationDir = "images/background/"
+		destinationDir = "/app/images/background/"
 	case strings.HasPrefix(handler.Filename, "dt"):
-		destinationDir = "images/desktop/"
+		destinationDir = "/app/images/desktop/"
 	case strings.HasPrefix(handler.Filename, "mb"):
-		destinationDir = "images/mobile/"
+		destinationDir = "/app/images/mobile/"
 	default:
-		destinationDir = "images/"
+		destinationDir = "/app/images/"
 	}
 
 	// Move the file to the destination directory
-	err = os.Rename(tempFile.Name(), destinationDir+handler.Filename)
+	//err = os.Rename(tempFile.Name(), destinationDir+handler.Filename)
+	err = os.WriteFile(filepath.Join(destinationDir, handler.Filename), fileBytes, 0666)
+	// if err != nil {
 	if err != nil {
 		fmt.Println("Error moving file:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1770,14 +1805,15 @@ func ImageFilePOST(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	image.Caption = caption
-	// if the image has an mb prefix then it doesnt need to go on the database
-	// so return a json encode response
+
+	// If the image has an mb prefix then it doesn't need to go in the database
+	// so return a JSON encoded response
 	if strings.HasPrefix(handler.Filename, "mb") {
 		json.NewEncoder(w).Encode(image)
 		return
 	}
-	// Insert the file details into the database
 
+	// Insert the file details into the database
 	sSQL := "INSERT INTO images (filename, caption, eventID, height, width) VALUES (?, ?, ?, ?, ?)"
 	_, err = sqldb.DB.Exec(sSQL, image.Filename, image.Caption, image.EventID, image.Height, image.Width)
 	if err != nil {
@@ -1785,7 +1821,7 @@ func ImageFilePOST(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	//fmt.Println("Record uploaded successfully")
+
 	// Retrieve the imageID of the newly inserted record
 	sSQL = "SELECT imageID FROM images ORDER BY imageID DESC LIMIT 1"
 	rows, err := sqldb.DB.Query(sSQL)
@@ -1794,12 +1830,12 @@ func ImageFilePOST(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	defer rows.Close()
+
 	type imageID struct {
 		ImageID int
 	}
 	Im := imageID{}
-	defer rows.Close()
-	fmt.Println("Rows:", rows)
 	if rows.Next() {
 		err = rows.Scan(&Im.ImageID)
 		if err != nil {
@@ -1810,16 +1846,11 @@ func ImageFilePOST(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Respond with the image details
-	// translate the image object to a string
-	sResp := fmt.Sprintf("%v", Im)
-	fmt.Println(sResp)
-	// fmt.Println(json.NewEncoder(w).Encode(Im))
 	json.NewEncoder(w).Encode(Im)
 }
 
 func ImagesPOST(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	var images []strt.ImageDetail
 
 	err := json.NewDecoder(r.Body).Decode(&images)
@@ -1853,7 +1884,7 @@ func ImagesPOST(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "application/json")
+
 	//	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:")
 	//  return the image object
 	json.NewEncoder(w).Encode(images)
@@ -1861,8 +1892,7 @@ func ImagesPOST(w http.ResponseWriter, r *http.Request) {
 }
 
 func ImageDELETE(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	vars := mux.Vars(r)
 	id := vars["id"]
 
@@ -1930,8 +1960,7 @@ func ImageDELETE(w http.ResponseWriter, r *http.Request) {
 }
 
 func ImagePUT(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	var image strt.ImageDetail
 
 	err := json.NewDecoder(r.Body).Decode(&image)
@@ -1949,8 +1978,7 @@ func ImagePUT(w http.ResponseWriter, r *http.Request) {
 }
 
 func SiteInfoGET(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	var siteInfo strt.SiteInfo
 
 	sSQL := "SELECT * FROM siteinfo"
@@ -1975,8 +2003,7 @@ func SiteInfoGET(w http.ResponseWriter, r *http.Request) {
 }
 
 func SiteInfoPUT(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+
 	var siteInfo strt.SiteInfo
 
 	err := json.NewDecoder(r.Body).Decode(&siteInfo)
@@ -1994,7 +2021,35 @@ func SiteInfoPUT(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(siteInfo)
 }
 
-// to build the project run the following command
-// go build -o bin/choirapi main.go
-// to run the project run the following command
-// /bin/choirapi
+func InstagramEmbed(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+	instagramURL := query.Get("url")
+	if instagramURL == "" {
+		http.Error(w, "Missing URL parameter", http.StatusBadRequest)
+		return
+	}
+
+	apiURL := "https://api.instagram.com/oembed?url=" + url.QueryEscape(instagramURL)
+	resp, err := http.Get(apiURL)
+	if err != nil {
+		log.Println("Error fetching Instagram oEmbed data:", err)
+		http.Error(w, "Error fetching Instagram oEmbed data", http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		http.Error(w, "Error fetching Instagram oEmbed data", resp.StatusCode)
+		return
+	}
+
+	var data map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		log.Println("Error decoding Instagram oEmbed response:", err)
+		http.Error(w, "Error decoding Instagram oEmbed response", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(data)
+}

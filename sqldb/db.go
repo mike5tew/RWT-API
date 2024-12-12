@@ -2,7 +2,9 @@ package sqldb
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
+	"os"
 	"sync"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -13,10 +15,17 @@ var (
 	once sync.Once
 )
 
-func InitDB(dataSourceName string) {
+func InitDB() {
 	once.Do(func() {
 		var err error
-		DB, err = sql.Open("mysql", dataSourceName)
+
+		dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s",
+			os.Getenv("MYSQL_USER"),
+			os.Getenv("MYSQL_PASSWORD"),
+			os.Getenv("MYSQL_HOST"),
+			os.Getenv("MYSQL_PORT"),
+			os.Getenv("MYSQL_DATABASE"))
+		DB, err = sql.Open("mysql", dsn)
 		if err != nil {
 			log.Fatalf("Error opening database: %v", err)
 		}
