@@ -52,20 +52,20 @@ type EventDetails struct {
 }
 
 type ThemeDetails struct {
-	ID               int            `json:"ID"`
-	BoxColour        string         `json:"BoxColour"`
-	TextColour       string         `json:"TextColour"`
-	TextFont         string         `json:"TextFont"`
-	BackgroundImage  sql.NullString `json:"BackgroundImage"`
-	TextboxColour    string         `json:"TextboxColour"`
-	LogoImage        sql.NullString `json:"LogoImage"`
-	BannerColour     string         `json:"BannerColour"`
-	MenuColour       string         `json:"MenuColour"`
-	ButtonColour     string         `json:"ButtonColour"`
-	ButtonHover      string         `json:"ButtonHover"`
-	ButtonTextColour string         `json:"ButtonTextColour"`
-	MenuTextColour   string         `json:"MenuTextColour"`
-	TextSize         int            `json:"TextSize"`
+	ID               int    `json:"ID"`
+	BoxColour        string `json:"BoxColour"`
+	TextColour       string `json:"TextColour"`
+	TextFont         string `json:"TextFont"`
+	BackgroundImage  string `json:"BackgroundImage"`
+	TextboxColour    string `json:"TextboxColour"`
+	LogoImage        string `json:"LogoImage"`
+	BannerColour     string `json:"BannerColour"`
+	MenuColour       string `json:"MenuColour"`
+	ButtonColour     string `json:"ButtonColour"`
+	ButtonHover      string `json:"ButtonHover"`
+	ButtonTextColour string `json:"ButtonTextColour"`
+	MenuTextColour   string `json:"MenuTextColour"`
+	TextSize         int    `json:"TextSize"`
 }
 
 type PlaylistEntry struct {
