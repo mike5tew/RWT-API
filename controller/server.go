@@ -6,16 +6,15 @@ import (
 	"os"
 	"strings"
 
-	"github.com/mike5tew/RWTProj/RWTapi/handlers/archive"
-	"github.com/mike5tew/RWTProj/RWTapi/handlers/clips"
-	"github.com/mike5tew/RWTProj/RWTapi/handlers/events"
-	"github.com/mike5tew/RWTProj/RWTapi/handlers/images"
-	"github.com/mike5tew/RWTProj/RWTapi/handlers/messages"
-	"github.com/mike5tew/RWTProj/RWTapi/handlers/music"
-	"github.com/mike5tew/RWTProj/RWTapi/handlers/playlists"
-	"github.com/mike5tew/RWTProj/RWTapi/handlers/site"
-	"github.com/mike5tew/RWTProj/RWTapi/handlers/theme"
-	"github.com/mike5tew/RWTProj/RWTapi/handlers/users"
+	"RWTAPI/handlers/archive"
+	"RWTAPI/handlers/clips"
+	"RWTAPI/handlers/events"
+	"RWTAPI/handlers/images"
+	"RWTAPI/handlers/messages"
+	"RWTAPI/handlers/music"
+	"RWTAPI/handlers/site"
+	"RWTAPI/handlers/theme"
+	"RWTAPI/handlers/users"
 
 	"github.com/gorilla/mux"
 	"github.com/rs/cors"
@@ -90,7 +89,7 @@ func InitHandlers() {
 	router.HandleFunc("/login", users.Login).Methods("POST")
 
 	// Additional routes
-	router.HandleFunc("/upcomingPlaylistsGET", playlists.UpcomingPlaylistsGET).Methods("GET")
+	router.HandleFunc("/upcomingPlaylistsGET", music.UpcomingPlaylistsGET).Methods("GET")
 	router.HandleFunc("/UpcomingEventsListsGET", events.UpcomingEventsListsGET).Methods("GET")
 	router.HandleFunc("/upload", images.FileDetailsPOST).Methods("POST")
 	router.HandleFunc("/uploadFile", images.UploadFile).Methods("POST")
