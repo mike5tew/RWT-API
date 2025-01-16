@@ -13,6 +13,7 @@ import (
 )
 
 func EventGET(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	vars := mux.Vars(r)
 	id := vars["id"]
@@ -51,10 +52,11 @@ func EventGET(w http.ResponseWriter, r *http.Request) {
 }
 
 func EventsList(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	var events []strt.EventDetails
 	var event strt.EventDetails
-	sSQL := "SELECT eventID, location, eventDate, title FROM choirevents" // WHERE eventDate >= curdate()"
+	sSQL := "SELECT eventID, location, eventDate, title FROM choirevents WHERE eventDate < curdate()"
 	rows, err := sqldb.DB.Query(sSQL)
 	if err != nil {
 		log.Println("Error:", err)
@@ -82,6 +84,7 @@ func EventsList(w http.ResponseWriter, r *http.Request) {
 }
 
 func EventsUpcomingGET(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	var events []strt.EventDetails
 	var event strt.EventDetails
@@ -113,6 +116,7 @@ func EventsUpcomingGET(w http.ResponseWriter, r *http.Request) {
 }
 
 func EventPOST(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	var event strt.EventDetails
 
@@ -134,6 +138,7 @@ func EventPOST(w http.ResponseWriter, r *http.Request) {
 }
 
 func EventDELETE(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	vars := mux.Vars(r)
 	id := vars["id"]
@@ -149,6 +154,7 @@ func EventDELETE(w http.ResponseWriter, r *http.Request) {
 }
 
 func EventPUT(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	var event strt.EventDetails
 
@@ -167,6 +173,7 @@ func EventPUT(w http.ResponseWriter, r *http.Request) {
 }
 
 func UpcomingEventsListsGET(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	var events []strt.EventDetails
 	var event strt.EventDetails

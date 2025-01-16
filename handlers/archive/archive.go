@@ -16,7 +16,7 @@ import (
 )
 
 func ArchiveGET(w http.ResponseWriter, r *http.Request) {
-
+	w.Header().Set("Content-Type", "application/json")
 	vars := mux.Vars(r)
 	id := vars["id"]
 
@@ -118,11 +118,14 @@ func ArchiveGET(w http.ResponseWriter, r *http.Request) {
 // GET a given number of archive records
 func ArchivesGET(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	w.Header().Set("Content-Type", "application/json")
+
 	// Initialize the database connection
 
 	// Get the screen size and number of images to return
 	screen := r.URL.Query().Get("screen")
 	imagesStr := r.URL.Query().Get("archives")
+
 	iRecords, err := strconv.Atoi(imagesStr)
 	if err != nil {
 		http.Error(w, "Invalid archives parameter", http.StatusBadRequest)
@@ -270,6 +273,7 @@ func ArchivesGET(w http.ResponseWriter, r *http.Request) {
 }
 
 func ArchiveEntryDELETE(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	vars := mux.Vars(r)
 	id := vars["id"]
@@ -285,7 +289,7 @@ func ArchiveEntryDELETE(w http.ResponseWriter, r *http.Request) {
 }
 
 func EventArchive(w http.ResponseWriter, r *http.Request) {
-
+	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	vars := mux.Vars(r)
 
@@ -381,6 +385,7 @@ func EventArchive(w http.ResponseWriter, r *http.Request) {
 }
 
 func ArchiveEntryPUT(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	var archive strt.ArchiveEntry
 
@@ -399,6 +404,7 @@ func ArchiveEntryPUT(w http.ResponseWriter, r *http.Request) {
 }
 
 func ArchiveEntryPOST(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	var archive strt.ArchiveEntry
 

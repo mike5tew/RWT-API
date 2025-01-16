@@ -14,6 +14,7 @@ import (
 
 // GET upcoming playlists
 func UpcomingPlaylistsGET(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 
@@ -80,6 +81,7 @@ func UpcomingPlaylistsGET(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Return the combined data
+
 	if err := json.NewEncoder(w).Encode(events); err != nil {
 		log.Println("Error encoding JSON:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -88,6 +90,7 @@ func UpcomingPlaylistsGET(w http.ResponseWriter, r *http.Request) {
 
 func MusicListGET(w http.ResponseWriter, r *http.Request) {
 	//fmt.Println("musicListGET")
+	w.Header().Set("Content-Type", "application/json")
 
 	var musicTracks []strt.MusicTrack
 	var musicTrack strt.MusicTrack
@@ -119,6 +122,7 @@ func MusicListGET(w http.ResponseWriter, r *http.Request) {
 }
 
 func MusicTrackGET(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	vars := mux.Vars(r)
 	id := vars["id"]
@@ -144,6 +148,7 @@ func MusicTrackGET(w http.ResponseWriter, r *http.Request) {
 }
 
 func MusicTrackPOST(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	var musicTrack strt.MusicTrack
 
@@ -186,6 +191,7 @@ func MusicTrackPOST(w http.ResponseWriter, r *http.Request) {
 }
 
 func MusicTrackDELETE(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	vars := mux.Vars(r)
 	id := vars["id"]
@@ -201,6 +207,7 @@ func MusicTrackDELETE(w http.ResponseWriter, r *http.Request) {
 }
 
 func MusicTrackPUT(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	var musicTrack strt.MusicTrack
 
@@ -219,6 +226,8 @@ func MusicTrackPUT(w http.ResponseWriter, r *http.Request) {
 }
 
 func PlaylistDELETE(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
 	vars := mux.Vars(r)
 
 	id := vars["id"]
@@ -233,6 +242,7 @@ func PlaylistDELETE(w http.ResponseWriter, r *http.Request) {
 }
 
 func PlaylistsGET(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	var playlists []strt.PlaylistEntry
 	var playlist strt.PlaylistEntry
@@ -258,6 +268,7 @@ func PlaylistsGET(w http.ResponseWriter, r *http.Request) {
 }
 
 func PlaylistPOST(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	var playlist []strt.PlaylistEntry
 
@@ -290,6 +301,7 @@ func PlaylistPOST(w http.ResponseWriter, r *http.Request) {
 }
 
 func PlaylistPUT(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	var playlist strt.PlaylistEntry
 
@@ -308,6 +320,7 @@ func PlaylistPUT(w http.ResponseWriter, r *http.Request) {
 }
 
 func PlaylistGET(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	vars := mux.Vars(r)
 	id := vars["id"]

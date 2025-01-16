@@ -9,6 +9,7 @@ import (
 )
 
 func SiteInfoGET(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	var siteInfo strt.SiteInfo
 	sSQL := "SELECT * FROM siteinfo"
@@ -33,6 +34,7 @@ func SiteInfoGET(w http.ResponseWriter, r *http.Request) {
 }
 
 func SiteInfoPUT(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	var siteInfo strt.SiteInfo
 	err := json.NewDecoder(r.Body).Decode(&siteInfo)

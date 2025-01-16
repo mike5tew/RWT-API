@@ -13,11 +13,8 @@ import (
 	"golang.org/x/exp/rand"
 )
 
-func RandomImagesGET(w http.ResponseWriter, r *http.Request) {
-	// ...existing RandomImagesGET code...
-}
-
 func ThemeDetailsGET(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	var theme strt.ThemeDetails
 
@@ -53,21 +50,41 @@ func ThemeDetailsGET(w http.ResponseWriter, r *http.Request) {
 }
 
 func ThemeDetailsPUT(w http.ResponseWriter, r *http.Request) {
-
 	var theme strt.ThemeDetails
 	err := json.NewDecoder(r.Body).Decode(&theme)
-
 	if err != nil {
+		log.Printf("Error decoding theme: %v", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	// Validate TextSize
+	if theme.TextSize <= 0 {
+		theme.TextSize = 12 // Set default if invalid
+	}
+
 	sSQL := "UPDATE themedetails SET boxColour = ?, textColour = ?, textFont = ?, backgroundImage = ?, textboxColour = ?, logoimage = ?, bannerColour = ?, menuColour = ?, buttonColour = ?, buttonHover = ?, buttonTextColour = ?, menuTextColour = ?, textSize = ?"
-	_, err = sqldb.DB.Exec(sSQL, theme.BoxColour, theme.TextColour, theme.TextFont, theme.BackgroundImage, theme.TextboxColour, theme.LogoImage, theme.BannerColour, theme.MenuColour, theme.ButtonColour, theme.ButtonHover, theme.ButtonTextColour, theme.MenuTextColour, theme.TextSize)
+	_, err = sqldb.DB.Exec(sSQL,
+		theme.BoxColour,
+		theme.TextColour,
+		theme.TextFont,
+		theme.BackgroundImage,
+		theme.TextboxColour,
+		theme.LogoImage,
+		theme.BannerColour,
+		theme.MenuColour,
+		theme.ButtonColour,
+		theme.ButtonHover,
+		theme.ButtonTextColour,
+		theme.MenuTextColour,
+		theme.TextSize)
+
 	if err != nil {
-		log.Println("Error:", err)
+		log.Printf("Error updating theme: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
 

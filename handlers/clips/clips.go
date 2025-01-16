@@ -11,7 +11,7 @@ import (
 )
 
 func EventClips(w http.ResponseWriter, r *http.Request) {
-
+	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	vars := mux.Vars(r)
 
@@ -39,6 +39,7 @@ func EventClips(w http.ResponseWriter, r *http.Request) {
 }
 
 func ClipDelete(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	vars := mux.Vars(r)
 	id := vars["id"]
@@ -60,6 +61,7 @@ func ClipDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 func ClipPOST(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	var clip strt.Clip
 

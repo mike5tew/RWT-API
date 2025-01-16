@@ -17,14 +17,67 @@ import (
 	"RWTAPI/handlers/users"
 
 	"github.com/gorilla/mux"
-	"github.com/rs/cors"
 )
 
 func contentTypeMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nw := &responseWriter{
+			ResponseWriter: w,
+			status:         http.StatusOK,
+		}
+
+		// Enhanced CORS headers
+		if origin := r.Header.Get("Origin"); origin != "" {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+		}
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, Authorization")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+
+		// Handle preflight
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		// Set content type and other headers
 		w.Header().Set("Content-Type", "application/json")
-		next.ServeHTTP(w, r)
+		w.Header().Set("Transfer-Encoding", "identity") // Disable chunked encoding
+		w.Header().Set("Connection", "close")           // Ensure connection closes properly
+		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
+
+		if r.Method == "DELETE" {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		next.ServeHTTP(nw, r)
+
+		// Ensure proper response completion
+		if nw.status == http.StatusOK && nw.written == 0 {
+			w.Write([]byte("{}"))
+		}
 	})
+}
+
+// Add a custom response writer to track status and body size
+type responseWriter struct {
+	http.ResponseWriter
+	status  int
+	written int64
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.status = code
+	rw.ResponseWriter.WriteHeader(code)
+}
+
+func (rw *responseWriter) Write(b []byte) (int, error) {
+	n, err := rw.ResponseWriter.Write(b)
+	rw.written += int64(n)
+	return n, err
 }
 
 // This function provides all of the endpoints listed in events.go
@@ -36,9 +89,7 @@ func InitHandlers() {
 	router.HandleFunc("/ArchiveEntryPOST", archive.ArchiveEntryPOST).Methods("POST")
 	router.HandleFunc("/ArchiveEntryPUT", archive.ArchiveEntryPUT).Methods("PUT")
 	router.HandleFunc("/ArchiveGET/{id}", archive.ArchiveGET).Methods("GET")
-	router.HandleFunc("/ArchivesGET", archive.ArchivesGET).Methods("GET")
-
-	// Clip routes
+	router.HandleFunc("/ArchivesGET", archive.ArchivesGET).Queries("screen", "{screen}", "archives", "{archives}").Methods("GET") // Clip routes
 	router.HandleFunc("/ClipDELETE/{id}", clips.ClipDelete).Methods("DELETE")
 	router.HandleFunc("/ClipsGET/{id}", clips.EventClips).Methods("GET")
 	router.HandleFunc("/ClipPOST", clips.ClipPOST).Methods("POST")
@@ -80,7 +131,7 @@ func InitHandlers() {
 	router.HandleFunc("/SiteInfoPUT", site.SiteInfoPUT).Methods("PUT")
 
 	// Theme routes
-	router.HandleFunc("/RandomImagesGET", theme.RandomImagesGET).Methods("GET")
+	router.HandleFunc("/RandomImagesGET", images.RandomImagesGET).Queries("screen", "{screen}", "images", "{images}").Methods("GET")
 	router.HandleFunc("/ThemeDetailsGET", theme.ThemeDetailsGET).Methods("GET")
 	router.HandleFunc("/ThemeDetailsPUT", theme.ThemeDetailsPUT).Methods("PUT")
 	router.HandleFunc("/ThemeDetailsRandom", theme.ThemeDetailsRandom).Methods("GET")
@@ -98,6 +149,8 @@ func InitHandlers() {
 	// Serve static files from the public directory
 	router.PathPrefix("/images/").Handler(http.StripPrefix("/images/", http.FileServer(http.Dir("/app/images"))))
 	router.PathPrefix("/music/").Handler(http.StripPrefix("/music/", http.FileServer(http.Dir("/app/music"))))
+	// Add font files handler
+	router.PathPrefix("/fonts/").Handler(http.StripPrefix("/fonts/", http.FileServer(http.Dir("/app/fonts"))))
 
 	// Initialize CORS configuration
 	corsWhitelist := os.Getenv("CORS_ORIGIN_WHITELIST")
@@ -105,14 +158,10 @@ func InitHandlers() {
 		log.Fatal("CORS_ORIGIN_WHITELIST is not set")
 	}
 	whitelist := strings.Split(corsWhitelist, ",")
-	c := cors.New(cors.Options{
-		AllowedOrigins:   whitelist,
-		AllowCredentials: true,
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE"},
-	})
 
-	handler := c.Handler(contentTypeMiddleware(router))
+	handler := contentTypeMiddleware(router)
 
 	log.Println("File Server is running on port 8080")
+	log.Println("CORS Origin Whitelist: ", whitelist)
 	http.ListenAndServe(":8080", handler)
 }

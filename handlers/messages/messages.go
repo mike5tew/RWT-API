@@ -11,6 +11,7 @@ import (
 )
 
 func MessagesGET(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 
@@ -38,6 +39,7 @@ func MessagesGET(w http.ResponseWriter, r *http.Request) {
 }
 
 func MessagePOST(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	var message strt.Message
 	//fmt.Println("MessagePOST")
@@ -72,6 +74,8 @@ func MessagePOST(w http.ResponseWriter, r *http.Request) {
 }
 
 func MessageDELETE(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
 	//extract the messageID from the URL which is just a number at the end of the URL
 	url := r.URL.Path
 	// split the URL into parts using the / character
@@ -92,6 +96,7 @@ func MessageDELETE(w http.ResponseWriter, r *http.Request) {
 }
 
 func MessagePUT(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	var message strt.Message
 

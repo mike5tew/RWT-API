@@ -20,7 +20,7 @@ import (
 )
 
 func FileDetailsPOST(w http.ResponseWriter, r *http.Request) {
-
+	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 
 	//get the json data from the request
@@ -58,6 +58,8 @@ func FileDetailsPOST(w http.ResponseWriter, r *http.Request) {
 }
 
 func UploadFile(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
 	// the function recieves a multipart form with a file and a string
 	// formData.append("file", file);
 	// formData.append("eventID", eventID.toString());
@@ -176,6 +178,7 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func EventImages(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	vars := mux.Vars(r)
@@ -204,8 +207,9 @@ func EventImages(w http.ResponseWriter, r *http.Request) {
 }
 
 func RandomImagesGET(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
+	fmt.Println("RandomImagesGET")
 	// Get the screen size and number of images to return
 	screen := r.URL.Query().Get("screen")
 	imagesStr := r.URL.Query().Get("images")
@@ -338,6 +342,7 @@ func RandomImagesGET(w http.ResponseWriter, r *http.Request) {
 }
 
 func ImageBackGET(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	var images []strt.ImageDetail
 	// we are retieving the background and logo images
@@ -393,6 +398,7 @@ func ImageBackGET(w http.ResponseWriter, r *http.Request) {
 }
 
 func ImagesGET(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	var images []strt.ImageDetail
 	var image strt.ImageDetail
@@ -440,6 +446,7 @@ func isValidFileType(fileType string) bool {
 // The images will either be for the background, desktop or mobile and will be stored in the images directory
 func ImageFilePOST(w http.ResponseWriter, r *http.Request) {
 	//fmt.Println("Content-Type:", r.Header.Get("Content-Type"))
+	w.Header().Set("Content-Type", "application/json")
 
 	// Parse the multipart form to 50MB
 	err := r.ParseMultipartForm(50 << 20)
@@ -662,6 +669,7 @@ func ImageFilePOST(w http.ResponseWriter, r *http.Request) {
 }
 
 func ImagesPOST(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	var images []strt.ImageDetail
 
@@ -703,81 +711,41 @@ func ImagesPOST(w http.ResponseWriter, r *http.Request) {
 }
 
 func ImageDELETE(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	//extract the id from the URL
 	vars := mux.Vars(r)
 	id := vars["id"]
 
-	// we need to get the filename so we can delete the files
-	sSQL := "SELECT filename, eventID FROM images WHERE imageID = ?"
-	rows, err := sqldb.DB.Query(sSQL, id)
-	if err != nil {
-		log.Println("Error:", err)
+	// Get image details before deletion
+	var image strt.ImageDetail
+	if err := sqldb.DB.QueryRow("SELECT filename FROM images WHERE imageID = ?", id).Scan(&image.Filename); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
-	var filename string
-	var eventID int
-	for rows.Next() {
-		err = rows.Scan(&filename, &eventID)
-		if err != nil {
-			log.Println("Error:", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	}
 
-	if eventID == 0 {
-		fpath := filepath.Join("/app/images/background/", filename)
-		err = os.Remove(fpath)
-		if err != nil {
-			log.Println("Error:", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-	} else if eventID == -1 {
-		fpath := filepath.Join("/app/images/logo/", filename)
-		err = os.Remove(fpath)
-		if err != nil {
-			log.Println("Error:", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	} else if strings.HasPrefix(filename, "dt") {
-		fpath := filepath.Join("/app/images/desktop/", filename)
-		err = os.Remove(fpath)
-		if err != nil {
-			log.Println("Error:", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		// then remove the prefix and replace it with mb
-		mbfile := strings.Replace(filename, "dt", "mb", 1)
-		fpath = filepath.Join("/app/images/mobile/", mbfile)
-		err = os.Remove(fpath)
-		if err != nil {
-			log.Println("Error:", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	}
-
-	// now delete the record from the database
-
-	sSQL = "DELETE FROM images WHERE imageID = ?"
-	_, err = sqldb.DB.Exec(sSQL, id)
+	// Delete from database
+	_, err := sqldb.DB.Exec("DELETE FROM images WHERE imageID = ?", id)
 	if err != nil {
-		log.Println("Error:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	// set the status code to 204 which corresponds to no content
-	w.WriteHeader(http.StatusNoContent)
+
+	// Delete files from disk
+	basePath := "/app/images/"
+	// Delete main image
+	if err := os.Remove(basePath + image.Filename); err != nil {
+		log.Printf("Error deleting main image: %v", err)
+	}
+	// Delete mobile version
+	if err := os.Remove(basePath + "mb" + image.Filename); err != nil {
+		log.Printf("Error deleting mobile image: %v", err)
+	}
+
 	json.NewEncoder(w).Encode(map[string]string{"message": "Image deleted successfully"})
 }
 
 func ImagePUT(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
 	var image strt.ImageDetail
 
