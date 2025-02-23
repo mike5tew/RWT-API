@@ -48,11 +48,6 @@ func contentTypeMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("Pragma", "no-cache")
 		w.Header().Set("Expires", "0")
 
-		if r.Method == "DELETE" {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-
 		next.ServeHTTP(nw, r)
 
 		// Ensure proper response completion
@@ -82,6 +77,10 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
 
 // This function provides all of the endpoints listed in events.go
 func InitHandlers() {
+	// Set up logging to capture stdout and stderr
+	log.SetFlags(log.Ldate | log.Ltime | log.LUTC | log.Lshortfile)
+	log.SetOutput(os.Stdout)
+
 	router := mux.NewRouter()
 
 	// Archive routes
@@ -119,7 +118,8 @@ func InitHandlers() {
 
 	// Music routes
 	router.HandleFunc("/musicListGET", music.MusicListGET).Methods("GET")
-	router.HandleFunc("/musicTrackDELETE", music.MusicTrackDELETE).Methods("DELETE")
+	router.HandleFunc("/musicTrackGET/{id}", music.MusicTrackGET).Methods("GET")
+	router.HandleFunc("/musicTrackDELETE/{id}", music.MusicTrackDELETE).Methods("DELETE") // Changed from "/musicTrackDELETE"
 	router.HandleFunc("/musicTrackPOST", music.MusicTrackPOST).Methods("POST")
 	router.HandleFunc("/musicTrackPUT", music.MusicTrackPUT).Methods("PUT")
 	router.HandleFunc("/playlistDELETE/{id}", music.PlaylistDELETE).Methods("DELETE")
@@ -161,7 +161,7 @@ func InitHandlers() {
 
 	handler := contentTypeMiddleware(router)
 
-	log.Println("File Server is running on port 8080")
-	log.Println("CORS Origin Whitelist: ", whitelist)
+	log.Println("File Server 2 is running on port 8080")
+	log.Println("CORS Origin Whitelist 2: ", whitelist)
 	http.ListenAndServe(":8080", handler)
 }

@@ -36,9 +36,12 @@ func Login(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+
 	if user.Username == "" {
 		http.Error(w, "Invalid username or password", http.StatusUnauthorized)
 		return
 	}
+	user.Password = ""
+	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(user)
 }

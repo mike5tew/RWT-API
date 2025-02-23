@@ -277,9 +277,43 @@ func ArchiveEntryDELETE(w http.ResponseWriter, r *http.Request) {
 
 	vars := mux.Vars(r)
 	id := vars["id"]
-
-	sSQL := "DELETE FROM archive WHERE archiveID = ?"
-	_, err := sqldb.DB.Exec(sSQL, id)
+	// we need the eventID to delete the images and clips
+	sSQL := "SELECT eventID FROM archive WHERE archiveID = ?"
+	rows, err := sqldb.DB.Query(sSQL, id)
+	if err != nil {
+		log.Println("Error:", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	var eventID int
+	for rows.Next() {
+		err = rows.Scan(&eventID)
+		if err != nil {
+			log.Println("Error:", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+	// delete the archive entry
+	sSQL = "DELETE FROM archive WHERE archiveID = ?"
+	_, err = sqldb.DB.Exec(sSQL, id)
+	if err != nil {
+		log.Println("Error:", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// delete the images that are associated with the event
+	sSQL = "DELETE FROM images WHERE eventID = ?"
+	_, err = sqldb.DB.Exec(sSQL, id)
+	if err != nil {
+		log.Println("Error:", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// delete the clips that are associated with the event
+	sSQL = "DELETE FROM clips WHERE eventID = ?"
+	_, err = sqldb.DB.Exec(sSQL, id)
 	if err != nil {
 		log.Println("Error:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)

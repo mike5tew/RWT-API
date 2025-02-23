@@ -137,7 +137,8 @@ func MusicTrackGET(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		err = rows.Scan(&musicTrack.MusicTrackID, &musicTrack.TrackName, &musicTrack.Lyrics, &musicTrack.Soprano, &musicTrack.Alto, &musicTrack.Tenor, &musicTrack.AllParts)
+
+		err = rows.Scan(&musicTrack.MusicTrackID, &musicTrack.TrackName, &musicTrack.Artist, &musicTrack.Lyrics, &musicTrack.Soprano, &musicTrack.Alto, &musicTrack.Tenor, &musicTrack.AllParts, &musicTrack.Piano)
 		if err != nil {
 			log.Println("Error:", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -196,13 +197,65 @@ func MusicTrackDELETE(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]
 
-	sSQL := "DELETE FROM music WHERE musicTrackID = ?"
-	_, err := sqldb.DB.Exec(sSQL, id)
+	log.Printf("\n=== DELETE TRACK START: %s ===\n", id)
+
+	// Check if record exists first
+	var exists int
+	err := sqldb.DB.QueryRow("SELECT COUNT(*) FROM rwtchoir.music WHERE musicTrackID = ?", id).Scan(&exists)
 	if err != nil {
-		log.Println("Error:", err)
+		log.Printf("[ERROR] Checking existence: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	if exists == 0 {
+		log.Printf("[ERROR] Track %s not found", id)
+		http.Error(w, "Track not found", http.StatusNotFound)
+		return
+	}
+
+	// Start transaction
+	tx, err := sqldb.DB.Begin()
+	if err != nil {
+		log.Printf("[ERROR] Starting transaction: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Delete playlists first
+	_, err = tx.Exec("DELETE FROM rwtchoir.playlists WHERE musicID = ?", id)
+	if err != nil {
+		tx.Rollback()
+		log.Printf("[ERROR] Deleting playlists: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Delete the music track
+	result, err := tx.Exec("DELETE FROM rwtchoir.music WHERE musicTrackID = ?", id)
+	if err != nil {
+		tx.Rollback()
+		log.Printf("[ERROR] Deleting track: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		tx.Rollback()
+		log.Printf("[ERROR] No rows affected deleting track %s", id)
+		http.Error(w, "Track not found", http.StatusNotFound)
+		return
+	}
+
+	// Commit transaction
+	if err = tx.Commit(); err != nil {
+		log.Printf("[ERROR] Committing transaction: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("=== DELETE SUCCESS: Track %s deleted ===\n", id)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -222,7 +275,8 @@ func MusicTrackPUT(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	w.WriteHeader(http.StatusOK)
+	//return the response
 }
 
 func PlaylistDELETE(w http.ResponseWriter, r *http.Request) {
