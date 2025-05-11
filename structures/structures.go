@@ -16,16 +16,16 @@ type FormData struct {
 // }
 
 type ImageDetail struct {
-	ImageID   int    `json:"ImageID"`
-	ImageURL  string `json:"ImageURL"`
-	Filename  string `json:"Filename"`
-	Caption   string `json:"Caption"`
-	Rows      int    `json:"Rows"`
-	Cols      int    `json:"Cols"`
-	Height    int    `json:"Height"`
-	Width     int    `json:"Width"`
-	EventID   int    `json:"EventID"`
-	Imagetype int    `json:"Imagetype"`
+	ImageID   int    `json:"imageID"`
+	ImageURL  string `json:"imageURL"`
+	Filename  string `json:"filename"`
+	Caption   string `json:"caption"`
+	Rows      int    `json:"rows"`
+	Cols      int    `json:"cols"`
+	Height    int    `json:"height"`
+	Width     int    `json:"width"`
+	EventID   int    `json:"eventID"`
+	Imagetype string `json:"imagetype"`
 }
 
 type DatURLResponse struct {
@@ -160,8 +160,19 @@ type MusicTrack struct {
 	Soprano      string `json:"Soprano"`
 	Alto         string `json:"Alto"`
 	Tenor        string `json:"Tenor"`
+	Bass         string `json:"Bass"`
 	AllParts     string `json:"AllParts"`
 	Piano        string `json:"Piano"`
+	ExtraTitle   string `json:"ExtraTitle"`
+	ExtraLink    string `json:"ExtraLink"`
+}
+
+// id, name, description, image
+type TeamMember struct {
+	ID          int         `json:"ID"`
+	Name        string      `json:"Name"`
+	Description string      `json:"Description"`
+	Image       ImageDetail `json:"Image"`
 }
 
 //	export interface ScreenSize {

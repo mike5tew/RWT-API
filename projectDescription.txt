@@ -1,0 +1,54 @@
+# RWT Project Description
+
+## Overview
+Dockerised project deployed on an Ubuntu Vultr server.
+Vultr pulls images from Docker Hub.
+Local development machine: macOS.
+
+## Components
+*   `frontend`: React frontend container (Nginx)
+*   `api`: Golang API container
+*   `db`: MySQL database container
+
+## Versions
+*   Ubuntu: 22.04.5 LTS (Kernel 5.15.0-126-generic)
+*   Docker Desktop (macOS): 4.37.2 (179585)
+*   Docker Engine: 27.4.0
+*   Docker Compose: v2.31.0-desktop.2
+*   Go: 1.23.2 (Using golang:1.23.2-bookworm image for build)
+*   Node.js (for React build): 18 (Using node:18-bullseye-slim image for build)
+*   React: ^17.0.2 (Check package.json for exact)
+*   MySQL: 8.0 (Using mysql:8.0 image)
+
+## Project Structure
+
+## Networking
+*   Containers connected via Docker Compose default network.
+*   Frontend Port: Host 80 -> Container 80, Host 443 -> Container 443
+*   API Port: Host 8080 -> Container 8080
+*   Database Port: Not exposed externally, accessed by API service as 'db' on port 3306 within Docker network.
+
+## Build Process
+*   Frontend Dockerfile: [Path, e.g., `/path/to/frontend/Dockerfile`] (Image: m1ke57ew/espthinking-frontend:latest)
+*   API Dockerfile: /Users/michaelstewart/Coding/RWTProj/RWTAPI/Dockerfile (Image: m1ke57ew/espthinking-api:amd64)
+*   Build Command (if manual): [e.g., `docker build -t <image_name> .`] (Likely built and pushed to Docker Hub)
+
+## Deployment
+*   Method: Docker Compose
+*   Compose File: /Users/michaelstewart/Coding/RWTProj/compose.yaml
+*   Run Command: `docker compose up -d` (likely)
+
+## Configuration
+*   Method: Environment variables via `./.env` file loaded by Docker Compose.
+*   Key Variables: `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`, `MYSQL_ROOT_PASSWORD`, `MYSQL_HOST` (set internally), `REACT_APP_API_URL`, `NGINX_BACKEND_HOST`
+
+## Volumes
+*   MySQL Data: Named volume `db-data` mounted to `/var/lib/mysql` in db container.
+*   MySQL Init Script: `./sql/rwtchoir.sql` mounted to `/docker-entrypoint-initdb.d/rwtchoir.sql` in db container (read-only).
+*   API Images: Host `./images` mounted to `/app/images` in api container.
+*   API Music: Host `./music` mounted to `/app/music` in api container.
+*   Frontend SSL Certs: Host `./ssl` mounted to `/etc/nginx/ssl` in frontend container (read-only).
+*   Frontend Logs: Host `./logs` mounted to `/var/log/nginx` in frontend container.
+
+## Logging
+*   Access Method: `docker compose logs <service_name>` (e.g., `docker compose logs api`)

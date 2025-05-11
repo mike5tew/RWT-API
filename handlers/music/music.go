@@ -56,7 +56,7 @@ func UpcomingPlaylistsGET(w http.ResponseWriter, r *http.Request) {
 	rows.Close()
 	// loop through events to get the playlists
 	for i := range events {
-		sSQL = `SELECT playlistID, eventID, musicID, playorder, trackName, artist, lyrics, soprano, alto, tenor, allParts, piano FROM playlists JOIN music ON playlists.musicID = music.musicTrackID WHERE eventID = ? ORDER BY playorder`
+		sSQL = `SELECT playlistID, eventID, musicID, playorder, trackName, artist, lyrics, soprano, alto, tenor, bass, allParts, piano FROM playlists JOIN music ON playlists.musicID = music.musicTrackID WHERE eventID = ? ORDER BY playorder`
 		//fmt.Println(sSQL, event.EventID)
 		playlistRows, err := sqldb.DB.Query(sSQL, events[i].EventID)
 		if err != nil {
@@ -68,7 +68,7 @@ func UpcomingPlaylistsGET(w http.ResponseWriter, r *http.Request) {
 
 		for playlistRows.Next() {
 			var playlist strt.PlaylistEntry
-			err = playlistRows.Scan(&playlist.ID, &playlist.EventID, &playlist.MusicTrack.MusicTrackID, &playlist.Playorder, &playlist.MusicTrack.TrackName, &playlist.MusicTrack.Artist, &playlist.MusicTrack.Lyrics, &playlist.MusicTrack.Soprano, &playlist.MusicTrack.Alto, &playlist.MusicTrack.Tenor, &playlist.MusicTrack.AllParts, &playlist.MusicTrack.Piano)
+			err = playlistRows.Scan(&playlist.ID, &playlist.EventID, &playlist.MusicTrack.MusicTrackID, &playlist.Playorder, &playlist.MusicTrack.TrackName, &playlist.MusicTrack.Artist, &playlist.MusicTrack.Lyrics, &playlist.MusicTrack.Soprano, &playlist.MusicTrack.Alto, &playlist.MusicTrack.Tenor, &playlist.MusicTrack.Bass, &playlist.MusicTrack.AllParts, &playlist.MusicTrack.Piano)
 			if err != nil {
 				log.Println("Error scanning row:", err)
 				http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -96,7 +96,7 @@ func MusicListGET(w http.ResponseWriter, r *http.Request) {
 	var musicTrack strt.MusicTrack
 	// open the database
 
-	sSQL := "SELECT * FROM music"
+	sSQL := "SELECT * FROM music ORDER BY trackName"
 	rows, err := sqldb.DB.Query(sSQL)
 	if err != nil {
 		fmt.Println("Error in query")
@@ -107,7 +107,7 @@ func MusicListGET(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	for rows.Next() {
 		// musicTrackID	int Auto Increment, trackName	varchar(100)	,artist	varchar(60)	,lyrics	varchar(120)	,soprano	varchar(120)	, alto	varchar(120)	,tenor	varchar(120)	,allParts	varchar(120)	,piano
-		err = rows.Scan(&musicTrack.MusicTrackID, &musicTrack.TrackName, &musicTrack.Artist, &musicTrack.Lyrics, &musicTrack.Soprano, &musicTrack.Alto, &musicTrack.Tenor, &musicTrack.AllParts, &musicTrack.Piano)
+		err = rows.Scan(&musicTrack.MusicTrackID, &musicTrack.TrackName, &musicTrack.Artist, &musicTrack.Lyrics, &musicTrack.Soprano, &musicTrack.Alto, &musicTrack.Tenor, &musicTrack.Bass, &musicTrack.AllParts, &musicTrack.Piano, &musicTrack.ExtraTitle, &musicTrack.ExtraLink)
 		if err != nil {
 			fmt.Println(err)
 			fmt.Println("Error in musicListGET")
@@ -138,7 +138,7 @@ func MusicTrackGET(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	for rows.Next() {
 
-		err = rows.Scan(&musicTrack.MusicTrackID, &musicTrack.TrackName, &musicTrack.Artist, &musicTrack.Lyrics, &musicTrack.Soprano, &musicTrack.Alto, &musicTrack.Tenor, &musicTrack.AllParts, &musicTrack.Piano)
+		err = rows.Scan(&musicTrack.MusicTrackID, &musicTrack.TrackName, &musicTrack.Artist, &musicTrack.Lyrics, &musicTrack.Soprano, &musicTrack.Alto, &musicTrack.Tenor, &musicTrack.Bass, &musicTrack.AllParts, &musicTrack.Piano, &musicTrack.ExtraTitle, &musicTrack.ExtraLink)
 		if err != nil {
 			log.Println("Error:", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -160,9 +160,9 @@ func MusicTrackPOST(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fmt.Println("musickTrack: ", musicTrack)
-	//musicTrackID, trackName, artist, lyrics, soprano, alto, tenor, allParts, piano
-	sSQL := "INSERT INTO music (trackName, artist, lyrics, soprano, alto, tenor, allParts, piano) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-	_, err = sqldb.DB.Exec(sSQL, musicTrack.TrackName, musicTrack.Artist, musicTrack.Lyrics, musicTrack.Soprano, musicTrack.Alto, musicTrack.Tenor, musicTrack.AllParts, musicTrack.Piano)
+	//musicTrackID, trackName, artist, lyrics, soprano, alto, tenor, bass, allParts, piano
+	sSQL := "INSERT INTO music (trackName, artist, lyrics, soprano, alto, tenor, bass, allParts, piano, extraTitle, extraLink) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	_, err = sqldb.DB.Exec(sSQL, musicTrack.TrackName, musicTrack.Artist, musicTrack.Lyrics, musicTrack.Soprano, musicTrack.Alto, musicTrack.Tenor, musicTrack.Bass, musicTrack.AllParts, musicTrack.Piano, musicTrack.ExtraTitle, musicTrack.ExtraLink)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		fmt.Println("Error in MusicTrackPOST", err)
@@ -269,14 +269,15 @@ func MusicTrackPUT(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	sSQL := "UPDATE music SET trackName = ?, lyrics = ?, soprano = ?, alto = ?, tenor = ?, allParts = ? WHERE musicTrackID = ?"
-	_, err = sqldb.DB.Exec(sSQL, musicTrack.TrackName, musicTrack.Lyrics, musicTrack.Soprano, musicTrack.Alto, musicTrack.Tenor, musicTrack.AllParts, musicTrack.MusicTrackID)
+	sSQL := "UPDATE music SET trackName = ?, lyrics = ?, soprano = ?, alto = ?, tenor = ?, bass = ?, allParts = ?, artist = ?, piano = ?, extraTitle = ?, extraLink = ? WHERE musicTrackID = ?"
+	_, err = sqldb.DB.Exec(sSQL, musicTrack.TrackName, musicTrack.Lyrics, musicTrack.Soprano, musicTrack.Alto, musicTrack.Tenor, musicTrack.Bass, musicTrack.AllParts, musicTrack.Artist, musicTrack.Piano, musicTrack.ExtraTitle, musicTrack.ExtraLink, musicTrack.MusicTrackID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
 	//return the response
+	json.NewEncoder(w).Encode(musicTrack)
 }
 
 func PlaylistDELETE(w http.ResponseWriter, r *http.Request) {
@@ -382,7 +383,7 @@ func PlaylistGET(w http.ResponseWriter, r *http.Request) {
 
 	var playlists []strt.PlaylistEntry
 
-	var sSQL = `SELECT playlistID, eventID, musicID, playorder, trackName, artist, lyrics, soprano, alto, tenor, allParts, piano 
+	var sSQL = `SELECT playlistID, eventID, musicID, playorder, trackName, artist, lyrics, soprano, alto, tenor, bass, allParts, piano, extraTitle, extraLink
                 FROM playlists 
                 JOIN music ON playlists.musicID = music.musicTrackID 
                 WHERE eventID = ? 
@@ -398,7 +399,7 @@ func PlaylistGET(w http.ResponseWriter, r *http.Request) {
 
 	for rows.Next() {
 		var playlist strt.PlaylistEntry
-		err = rows.Scan(&playlist.PlaylistID, &playlist.EventID, &playlist.MusicTrack.MusicTrackID, &playlist.Playorder, &playlist.MusicTrack.TrackName, &playlist.MusicTrack.Artist, &playlist.MusicTrack.Lyrics, &playlist.MusicTrack.Soprano, &playlist.MusicTrack.Alto, &playlist.MusicTrack.Tenor, &playlist.MusicTrack.AllParts, &playlist.MusicTrack.Piano)
+		err = rows.Scan(&playlist.PlaylistID, &playlist.EventID, &playlist.MusicTrack.MusicTrackID, &playlist.Playorder, &playlist.MusicTrack.TrackName, &playlist.MusicTrack.Artist, &playlist.MusicTrack.Lyrics, &playlist.MusicTrack.Soprano, &playlist.MusicTrack.Alto, &playlist.MusicTrack.Tenor, &playlist.MusicTrack.Bass, &playlist.MusicTrack.AllParts, &playlist.MusicTrack.Piano, &playlist.MusicTrack.ExtraTitle, &playlist.MusicTrack.ExtraLink)
 		if err != nil {
 			log.Println("Error scanning row:", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)

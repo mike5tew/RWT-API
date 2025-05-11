@@ -59,15 +59,7 @@ func FileDetailsPOST(w http.ResponseWriter, r *http.Request) {
 
 func UploadFile(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-
-	// the function recieves a multipart form with a file and a string
-	// formData.append("file", file);
-	// formData.append("eventID", eventID.toString());
-	// formData.append("caption", caption);
-	// formData.append("width", width.toString());
-	// formData.append("height", height.toString());
-	// formData.append("filename", filename);
-	// formData.append("uploadType", uploadType.toString());
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	// the function saves the file to the server and the details to the database
 	// Parse the multipart form, 10 << 20 specifies a maximum upload of 10MB files
 	r.ParseMultipartForm(10 << 20)
@@ -92,13 +84,15 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 
 	sFolderName := "images"
 	switch r.FormValue("uploadType") {
-	case "Background":
+	case "bg":
 		// Copy the file to the destination
-		sFolderName = "background"
-	case "LogoImage":
-		sFolderName = "logos"
-	case "MobileImage":
-		sFolderName = "mobile"
+		sFolderName = "/app/images/background/"
+	case "lg":
+		sFolderName = "/app/images/logo/"
+	case "mb":
+		sFolderName = "/app/images/mobile/"
+	case "dt":
+		sFolderName = "/app/images/desktop/"
 	}
 	// To address the file to the folder we need to create the folder if it does not exist
 	// check if the folder exists
@@ -112,7 +106,7 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	// create the file
-	f, err = os.OpenFile(sFolderName+"/"+handler.Filename, os.O_WRONLY|os.O_CREATE, 0666)
+	f, err = os.OpenFile(sFolderName+handler.Filename, os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
 		fmt.Println(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -209,9 +203,7 @@ func EventImages(w http.ResponseWriter, r *http.Request) {
 func RandomImagesGET(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	fmt.Println("RandomImagesGET")
 	// Get the screen size and number of images to return
-	screen := r.URL.Query().Get("screen")
 	imagesStr := r.URL.Query().Get("images")
 	imageReq, err := strconv.Atoi(imagesStr)
 	if err != nil {
@@ -221,22 +213,17 @@ func RandomImagesGET(w http.ResponseWriter, r *http.Request) {
 	// create an empty archive entry
 	var Arch strt.ArchiveEntry
 	// Determine if the device is desktop or mobile
-	filepath := "/app/images/desktop"
-	prefix := "dt%"
-	if screen == "mobile" {
-		filepath = "/app/images/mobile"
-		prefix = "mb%"
-	}
 
 	// Check if the database connection is initialized
 	if sqldb.DB == nil {
 		log.Println("Database connection is not initialized")
-		// initialize the database connection
+		http.Error(w, "Database connection error", http.StatusInternalServerError)
+		return
 	}
 
 	// Query the database for random images
-	sSQL := "SELECT imageID, filename, caption, eventID, height, width FROM images WHERE filename LIKE ? ORDER BY RAND() LIMIT ?"
-	rows, err := sqldb.DB.Query(sSQL, prefix, imageReq)
+	sSQL := "SELECT imageID, filename, caption, eventID, height, width FROM images ORDER BY RAND() LIMIT ?"
+	rows, err := sqldb.DB.Query(sSQL, imageReq)
 	if err != nil {
 		log.Println("Error querying database:", err)
 		http.Error(w, "Database query error", http.StatusInternalServerError)
@@ -253,22 +240,6 @@ func RandomImagesGET(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Adjust filename for mobile
-		if filepath == "/app/images/mobile" {
-			image.Filename = strings.Replace(image.Filename, "dt", "mb", 1)
-		}
-		// Adjust the filename for the frontend
-		fLocal := filepath + "/" + image.Filename
-		image.Filename = filepath + "/" + url.PathEscape(image.Filename)
-		fmt.Println("filename ", image.Filename)
-		// Confirm the file exists
-		if _, err := os.Stat(fLocal); os.IsNotExist(err) {
-			log.Println("File does not exist:", image.Filename)
-			image.Filename = "https://via.placeholder.com/80"
-		}
-		// remove the /app prefix
-		image.Filename = image.Filename[4:]
-		// Add the image to the array
 		Arch.Images = append(Arch.Images, image)
 	}
 
@@ -293,46 +264,6 @@ func RandomImagesGET(w http.ResponseWriter, r *http.Request) {
 		Arch.Clips = append(Arch.Clips, clip)
 	}
 
-	// // Fetch Instagram oEmbed data for each clip
-	// for i := range Arch.Clips {
-	// 	if strings.Contains(Arch.Clips[i].ClipURL, "instagram.com") {
-	// 		// this is the embed text for the clip
-	// 		Arch.Clips[i].ClipURL = "<blockquote class=\"instagram-media\" data-instgrm-captioned data-instgrm-permalink=\"" + Arch.Clips[i].ClipURL + "\" data-instgrm-version=\"12\"></blockquote>"
-	// apiURL := "https://api.instagram.com/oembed?url=" + Arch.Clips[i].ClipURL
-	// resp, err := http.Get(apiURL)
-	// if err != nil {
-	// 	log.Println("Error fetching Instagram oEmbed data:", err)
-	// 	http.Error(w, "Error fetching Instagram oEmbed data", http.StatusInternalServerError)
-	// 	return
-	// }
-	// defer resp.Body.Close()
-
-	// if resp.StatusCode != http.StatusOK {
-	// 	http.Error(w, "Error fetching Instagram oEmbed data", resp.StatusCode)
-	// 	return
-	// }
-
-	// contentType := resp.Header.Get("Content-Type")
-	// if !strings.Contains(contentType, "application/json") {
-	// 	log.Println("Invalid content type:", contentType, resp)
-	// 	http.Error(w, "Invalid content type", http.StatusInternalServerError)
-	// 	return
-	// }
-
-	// var data map[string]interface{}
-	// if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-	// 	log.Println("Error decoding Instagram oEmbed response:", err)
-	// 	http.Error(w, "Error decoding Instagram oEmbed response", http.StatusInternalServerError)
-	// 	return
-	// }
-
-	// Add the Instagram data to the clip
-	// 		if html, ok := data["html"].(string); ok {
-	// 			Arch.Clips[i].ClipURL = html
-	// 		}
-	// 	}
-	// }
-
 	// Return the archive entry with images and clips
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(Arch); err != nil {
@@ -346,7 +277,7 @@ func ImageBackGET(w http.ResponseWriter, r *http.Request) {
 
 	var images []strt.ImageDetail
 	// we are retieving the background and logo images
-	sSQL := "SELECT * FROM images WHERE eventID < 1"
+	sSQL := "SELECT * FROM images WHERE eventID =-1"
 	rows, err := sqldb.DB.Query(sSQL)
 	if err != nil {
 		log.Println("Error:", err)
@@ -362,37 +293,7 @@ func ImageBackGET(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		urlversion := url.PathEscape(image.Filename)
-
-		// now we need to retieve the image file
-		// check the filename prefix
-		// if the filename starts with bg then it is a background image
-		if image.EventID == 0 {
-			// check if the file exists
-			localfile := "/app/images/background/" + image.Filename
-			if _, err := os.Stat(localfile); os.IsNotExist(err) {
-				// File does not exist
-				fmt.Println("File does not exist" + localfile)
-				image.Filename = ""
-			} else {
-				// File exists, adjust the path for the frontend
-				image.ImageURL = "images/background/" + urlversion
-			}
-			images = append(images, image)
-
-		} else {
-			// check if the file exists
-			localfile := "/app/images/logo/" + image.Filename
-			if _, err := os.Stat(localfile); os.IsNotExist(err) {
-				// File does not exist
-				fmt.Println("File does not exist" + localfile)
-				image.Filename = ""
-			} else {
-				// File exists, adjust the path for the frontend
-				image.ImageURL = "images/logo/" + urlversion
-			}
-			images = append(images, image)
-		}
+		images = append(images, image)
 	}
 	json.NewEncoder(w).Encode(images)
 }
@@ -400,17 +301,30 @@ func ImageBackGET(w http.ResponseWriter, r *http.Request) {
 func ImagesGET(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
+	// Get pagination parameters
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	itemsPerPage, _ := strconv.Atoi(r.URL.Query().Get("itemsPerPage"))
+	if page < 1 {
+		page = 1
+	}
+	if itemsPerPage < 1 {
+		itemsPerPage = 20 // Default value
+	}
+
+	offset := (page - 1) * itemsPerPage
+
 	var images []strt.ImageDetail
 	var image strt.ImageDetail
 
-	sSQL := "SELECT * FROM images"
-	rows, err := sqldb.DB.Query(sSQL)
+	sSQL := "SELECT * FROM images LIMIT ? OFFSET ?"
+	rows, err := sqldb.DB.Query(sSQL, itemsPerPage, offset)
 	if err != nil {
 		log.Println("Error:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
+
 	for rows.Next() {
 		err = rows.Scan(&image.ImageID, &image.Filename, &image.Caption, &image.EventID, &image.Height, &image.Width)
 		if err != nil {
@@ -420,6 +334,7 @@ func ImagesGET(w http.ResponseWriter, r *http.Request) {
 		}
 		images = append(images, image)
 	}
+
 	json.NewEncoder(w).Encode(images)
 }
 
@@ -465,6 +380,8 @@ func ImageFilePOST(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
+	// Check for the filetype from the form
+
 	// Validate file type
 	fileType := handler.Header.Get("Content-Type")
 	if !isValidFileType(fileType) {
@@ -499,7 +416,7 @@ func ImageFilePOST(w http.ResponseWriter, r *http.Request) {
 	// Ensure the temporary directory exists
 	tempDir := "/root/temp-images"
 	if _, err := os.Stat(tempDir); os.IsNotExist(err) {
-		err = os.MkdirAll(tempDir, os.ModePerm)
+		err = os.Mkdir(tempDir, os.ModePerm)
 		if err != nil {
 			fmt.Println("Error creating temporary directory:", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -537,13 +454,15 @@ func ImageFilePOST(w http.ResponseWriter, r *http.Request) {
 
 	// Determine the destination directory based on the filename prefix
 	var destinationDir string
-	switch {
-	case strings.HasPrefix(handler.Filename, "dt"):
+	switch r.FormValue("uploadType") {
+	case "dt":
 		destinationDir = "/app/images/desktop/"
-	case strings.HasPrefix(handler.Filename, "mb"):
+	case "mb":
 		destinationDir = "/app/images/mobile/"
-	default:
-		destinationDir = "/app/images/"
+	case "bg":
+		destinationDir = "/app/images/background/"
+	case "lg":
+		destinationDir = "/app/images/logo/"
 	}
 
 	// Initialize the image details
@@ -577,20 +496,29 @@ func ImageFilePOST(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	//create the folder if it doesn't exist
-	if _, err := os.Stat(destinationDir); os.IsNotExist(err) {
-		// create the folder
-		err = os.Mkdir(destinationDir, 0755)
+	// Create the base image directory if it doesn't exist
+	baseDir := "/app/images/"
+	if _, err := os.Stat(baseDir); os.IsNotExist(err) {
+		err = os.Mkdir(baseDir, 0755)
 		if err != nil {
-			fmt.Println(err)
+			fmt.Println("Error creating base directory:", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 	}
+
+	// Now create the specific subdirectory
+	if _, err := os.Stat(destinationDir); os.IsNotExist(err) {
+		err = os.Mkdir(destinationDir, 0755)
+		if err != nil {
+			fmt.Println("Error creating directory:", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
 	// Move the file to the destination directory
-	//err = os.Rename(tempFile.Name(), destinationDir+handler.Filename)
 	err = os.WriteFile(filepath.Join(destinationDir, handler.Filename), fileBytes, 0666)
-	// if err != nil {
 	if err != nil {
 		fmt.Println("Error moving file:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -621,7 +549,12 @@ func ImageFilePOST(w http.ResponseWriter, r *http.Request) {
 	// If the image has an mb prefix then it doesn't need to go in the database
 	// so return a JSON encoded response
 	if strings.HasPrefix(handler.Filename, "mb") {
-		json.NewEncoder(w).Encode(image)
+		image.ImageID = 0 // Explicitly set imageID to 0 for mobile images
+		err = json.NewEncoder(w).Encode(image)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		return
 	}
 
@@ -710,6 +643,34 @@ func ImagesPOST(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func DeleteMemberImage(ID int, filename string) error {
+	// Delete the image from the database
+	query := "DELETE FROM rwtchoir.images WHERE imageID = ?"
+	_, err := sqldb.DB.Exec(query, ID)
+	if err != nil {
+		return err
+	}
+
+	// Delete files from disk
+	basePath := "/app/images/"
+
+	// Try to delete the desktop version
+	dtPath := basePath + "dt" + filename
+	if err := os.Remove(dtPath); err != nil {
+		log.Printf("Error deleting desktop image: %v", err)
+		// Continue execution - non-fatal error
+	}
+
+	// Try to delete the mobile version
+	mbPath := basePath + "mb" + filename
+	if err := os.Remove(mbPath); err != nil {
+		log.Printf("Error deleting mobile image: %v", err)
+		// Continue execution - non-fatal error
+	}
+
+	return nil
+}
+
 func ImageDELETE(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	//extract the id from the URL
@@ -732,11 +693,13 @@ func ImageDELETE(w http.ResponseWriter, r *http.Request) {
 
 	// Delete files from disk
 	basePath := "/app/images/"
-	// Delete main image
+
+	// Try to delete the main image
 	if err := os.Remove(basePath + image.Filename); err != nil {
 		log.Printf("Error deleting main image: %v", err)
 	}
-	// Delete mobile version
+
+	// Try to delete the mobile version
 	if err := os.Remove(basePath + "mb" + image.Filename); err != nil {
 		log.Printf("Error deleting mobile image: %v", err)
 	}
@@ -756,6 +719,25 @@ func ImagePUT(w http.ResponseWriter, r *http.Request) {
 	}
 	sSQL := "UPDATE images SET filename = ?, caption = ?, eventID = ?, height = ?, width = ? WHERE imageID = ?"
 	_, err = sqldb.DB.Exec(sSQL, image.Filename, image.Caption, image.EventID, image.Height, image.Width, image.ImageID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func ImageCaptionPUT(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var image strt.ImageDetail
+
+	err := json.NewDecoder(r.Body).Decode(&image)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	sSQL := "UPDATE images SET caption = ? WHERE imageID = ?"
+	_, err = sqldb.DB.Exec(sSQL, image.Caption, image.ImageID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -794,4 +776,5 @@ func InstagramEmbed(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(data)
+
 }

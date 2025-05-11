@@ -16,6 +16,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 
 	//fmt.Println("Login")
 	err := json.NewDecoder(r.Body).Decode(&user)
+
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -42,6 +43,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user.Password = ""
+	// return a status OK
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(user)
 }

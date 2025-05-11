@@ -13,8 +13,11 @@ import (
 	"RWTAPI/handlers/messages"
 	"RWTAPI/handlers/music"
 	"RWTAPI/handlers/site"
+	"RWTAPI/handlers/team"
 	"RWTAPI/handlers/theme"
 	"RWTAPI/handlers/users"
+
+	// "RWTAPI/sqldb"
 
 	"github.com/gorilla/mux"
 )
@@ -83,6 +86,19 @@ func InitHandlers() {
 
 	router := mux.NewRouter()
 
+	// // Ensure the teams table exists
+	// _, err := sqldb.DB.Exec(`
+	// 	CREATE TABLE IF NOT EXISTS teams (
+	// 		id INT AUTO_INCREMENT PRIMARY KEY,
+	// 		name VARCHAR(255) NOT NULL UNIQUE,
+	// 		description TEXT,
+	// 		image VARCHAR(255)
+	// 	);
+	// `)
+	// if err != nil {
+	// 	log.Fatalf("Error creating teams table: %v", err)
+	// }
+
 	// Archive routes
 	router.HandleFunc("/archiveDELETE/{id}", archive.ArchiveEntryDELETE).Methods("DELETE")
 	router.HandleFunc("/ArchiveEntryPOST", archive.ArchiveEntryPOST).Methods("POST")
@@ -104,11 +120,13 @@ func InitHandlers() {
 	router.HandleFunc("/EventsUpcomingGET", events.EventsUpcomingGET).Methods("GET")
 
 	// Image routes
+	router.HandleFunc("/ImagesGET", images.ImagesGET).Methods("GET")
 	router.HandleFunc("/ImageBackGET", images.ImageBackGET).Methods("GET")
 	router.HandleFunc("/ImageDELETE/{id}", images.ImageDELETE).Methods("DELETE")
 	router.HandleFunc("/ImageFilePOST", images.ImageFilePOST).Methods("POST")
 	router.HandleFunc("/ImagePOST", images.ImagesPOST).Methods("POST")
 	router.HandleFunc("/ImagePUT", images.ImagePUT).Methods("PUT")
+	router.HandleFunc("/ImageDetailsGET/{id}/caption", images.ImageCaptionPUT).Methods("PUT")
 
 	// Message routes
 	router.HandleFunc("/messageDELETE/{id}", messages.MessageDELETE).Methods("DELETE")
@@ -145,6 +163,14 @@ func InitHandlers() {
 	router.HandleFunc("/upload", images.FileDetailsPOST).Methods("POST")
 	router.HandleFunc("/uploadFile", images.UploadFile).Methods("POST")
 	router.HandleFunc("/instagram-oembed", events.InstagramEmbed).Methods("GET")
+
+	// team member routes
+	router.HandleFunc("/teamGET", team.GetTeam).Methods("GET")
+	log.Println("Registered route: /teamGET")
+	router.HandleFunc("/memberGET/{id}", team.GetMember).Methods("GET")
+	router.HandleFunc("/memberDELETE/{id}", team.RemoveMember).Methods("DELETE")
+	router.HandleFunc("/memberPUT", team.MemberPUT).Methods("PUT")
+	router.HandleFunc("/memberPOST", team.MemberPOST).Methods("POST")
 
 	// Serve static files from the public directory
 	router.PathPrefix("/images/").Handler(http.StripPrefix("/images/", http.FileServer(http.Dir("/app/images"))))

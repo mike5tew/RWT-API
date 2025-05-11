@@ -8,9 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"net/url"
 	"strconv"
-	"strings"
 
 	"github.com/gorilla/mux"
 )
@@ -123,21 +121,12 @@ func ArchivesGET(w http.ResponseWriter, r *http.Request) {
 	// Initialize the database connection
 
 	// Get the screen size and number of images to return
-	screen := r.URL.Query().Get("screen")
 	imagesStr := r.URL.Query().Get("archives")
 
 	iRecords, err := strconv.Atoi(imagesStr)
 	if err != nil {
 		http.Error(w, "Invalid archives parameter", http.StatusBadRequest)
 		return
-	}
-
-	// Determine if the device is desktop or mobile
-	filepath := "images/desktop"
-	if screen == "mobile" {
-		filepath = "images/mobile"
-	} else {
-		filepath = "images/desktop"
 	}
 
 	// Create slices to hold the data
@@ -220,10 +209,9 @@ func ArchivesGET(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(errorArray)
 			return
 		}
-		if filepath == "images/mobile" {
-			image.Filename = strings.Replace(image.Filename, "dt", "mb", 1)
-		}
-		image.Filename = filepath + "/" + url.PathEscape(image.Filename)
+		// if filepath == "images/mobile" {
+		// 	image.Filename = strings.Replace(image.Filename, "dt", "mb", 1)
+		// }
 		// fmt.Println(image.Filename)
 		images = append(images, image)
 	}

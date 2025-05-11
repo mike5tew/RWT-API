@@ -56,7 +56,7 @@ func EventsList(w http.ResponseWriter, r *http.Request) {
 
 	var events []strt.EventDetails
 	var event strt.EventDetails
-	sSQL := "SELECT eventID, location, eventDate, title FROM choirevents WHERE eventDate < curdate()"
+	sSQL := "SELECT eventID, location, eventDate, title FROM choirevents ORDER BY eventDate"
 	rows, err := sqldb.DB.Query(sSQL)
 	if err != nil {
 		log.Println("Error:", err)
@@ -125,7 +125,15 @@ func EventPOST(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	//fmt.Println(event)
+
+	// Ensure the date is in the correct format
+	parsedDate, err := tools.ParseMySQLDateTime(event.DateString)
+	if err != nil {
+		http.Error(w, "Invalid date format", http.StatusBadRequest)
+		return
+	}
+	event.DateString = parsedDate.Format("2006-01-02")
+
 	sSQL := "INSERT INTO choirevents (location, eventDate, startTime, endTime, price, title, invitation, meetingPoint) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
 	_, err = sqldb.DB.Exec(sSQL, event.Location, event.DateString, event.StartTime, event.EndTime, event.Price, event.Title, event.Invitation, event.MeetingPoint)
 	if err != nil {
